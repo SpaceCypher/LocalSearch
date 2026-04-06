@@ -326,10 +326,30 @@
 
 ---
 
-## In Progress
+### ✅ Task F1 — Xcode Project Scaffold (Frontend)
+**Commit:** `feat(frontend): scaffold SwiftUI macOS app — accessory policy, no Dock icon`
 
-### 🔄 Task F2 — SearchViewModel State Machine Core (`frontend/Sources/ViewModel/SearchViewModel.swift`)
-**Target commit:** `feat(vm): SearchViewModel core — state machine, generation counter, insertion sort`
+**What was built:**
+- Swift Package Manager project structure (`frontend/Package.swift`)
+- `LocalSearchApp.swift` — App entry point with NSApplicationDelegateAdaptor
+- `AppDelegate` — Sets `.accessory` activation policy (no Dock icon)
+- `SearchWindowController` — NSPanel-based window controller (stub)
+- `SearchViewModel` — State management (stub)
+- `HotkeyManager` — Global hotkey registration (stub)
+- `Info.plist` — LSUIElement=true for accessory app behavior
+- Basic test structure with `SearchViewModelTests.swift`
+
+**Tests (1/1 GREEN):**
+| Test | Result |
+|---|---|
+| `test_initialState` | ✅ |
+
+**Key design note:** Uses Swift Package Manager instead of Xcode project for better version control and CLI build support. The app runs as an accessory (no Dock icon, no menu bar) and manages its own NSPanel window.
+
+---
+
+### ✅ Task F2 — SearchViewModel State Machine Core (`frontend/Sources/ViewModel/SearchViewModel.swift`)
+**Commit:** `feat(vm): SearchViewModel core — state machine, generation counter, insertion sort`
 
 **What was built:**
 - `SearchViewModel` with `@MainActor` ObservableObject pattern
@@ -365,7 +385,41 @@
 
 ---
 
-## Upcoming
+## In Progress
+
+### 🔄 Task 13 — WAL Ingestion Pipeline (`src/wal/mod.rs`)
+**Next backend task** (on hold while frontend is being developed)
+
+---
+
+## Upcoming (Frontend)
+
+| # | Task | Key implementation |
+|---|---|---|
+| F3 | Debounce + Cancellation Engine | 80ms trailing-edge debounce, Task cancellation, prefix cache bypass |
+| F4 | SearchWindow — NSPanel Configuration | Floating, non-activating, all-spaces, escape-to-dismiss |
+| F5 | Global Hotkey Registration (⌥Space) | CGEventTap, toggle show/hide behavior |
+| F6 | QueryFieldView — Search Input Component | Spinner, clear button, filter chip extraction |
+| F7 | Query Parser — Inline Filter Syntax | 8 filter types, negation, content phrase |
+| F8 | ScopeBarView — Filter Chips | Multi-select OR filter, ⌘1-5 shortcuts, instant client-side filtering |
+| F9 | ResultListView + ResultRowView | Fixed heights, pill highlights, middle truncation |
+| F10 | Keyboard Navigation | 14 shortcuts, history navigation, modifier actions |
+| F11 | StatusBarView — System State Feedback | Result count, 7-state system badge, rotating shortcut hints |
+| F12 | MetadataPanelView — Detail Expansion | QL thumbnail, 260px slide-in, quick actions |
+| F13 | Animation System | 6 spring configs, reduce motion support, 4-animation cap |
+| F14 | IndexProgressView — First Launch Bootstrap | Static progress bar, phase text, ETA display |
+| F15 | Zero-Result State + Spelling Suggestions | BK-tree spelling suggestions, degraded-mode explanation |
+| F16 | Permission-Denied Result Row | Lock icon, inline label, system settings alert |
+| F17 | Accessibility | VoiceOver labels, live region status bar, reduce motion |
+| F18 | Backend Protocol + XPC Channel | XPC channel to Rust engine, AsyncStream bridge, auto-reconnect |
+| F19 | Prefix Cache (UI-Side Mirror) | LRU 8MB, prefix substring match, speculative prefetch |
+| F20 | Slow Backend + Skeleton State | 150ms threshold, max 3, stale-results exclusion |
+| F21 | Integration Test — Full Search Flow | End-to-end with MockBackend |
+| F22 | Accessibility Audit + Reduce Motion Hardening | XCUITest VoiceOver navigation audit |
+
+---
+
+## Upcoming (Backend - On Hold) (Frontend)
 
 | # | Task | Key implementation |
 |---|---|---|
