@@ -2,10 +2,22 @@
   "": {
     "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/master.swiftdeps"
   },
+  "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift": {
+    "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.d",
+    "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o",
+    "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swiftdeps"
+  },
   "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift": {
     "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.d",
     "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o",
     "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests~partial.swiftmodule",
     "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swiftdeps"
+  },
+  "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift": {
+    "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.d",
+    "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swift.o",
+    "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swiftdeps"
   }
 }

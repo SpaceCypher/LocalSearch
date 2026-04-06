@@ -20,6 +20,12 @@
     "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager~partial.swiftmodule",
     "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swiftdeps"
   },
+  "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift": {
+    "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.d",
+    "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o",
+    "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce~partial.swiftmodule",
+    "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swiftdeps"
+  },
   "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift": {
     "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.d",
     "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",

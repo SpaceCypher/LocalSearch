@@ -21,11 +21,15 @@ class SearchViewModel: ObservableObject {
     // MARK: - Query Lifecycle
     
     func onQueryChange(_ newText: String) {
-        // 1. Synchronous: update generation, dim results
+        // 1. Cancel any pending debounce or search tasks
+        debounceTask?.cancel()
+        searchTask?.cancel()
+        
+        // 2. Synchronous: update generation, dim results
         queryGeneration &+= 1
         queryText = newText
         
-        // 2. Handle empty query
+        // 3. Handle empty query
         guard !newText.isEmpty else {
             queryState = .idle
             displayResults = []
@@ -33,9 +37,52 @@ class SearchViewModel: ObservableObject {
             return
         }
         
-        // 3. Dim stale results immediately (synchronous)
+        // 4. Check prefix cache for instant results
+        if let cachedResults = prefixCache.lookup(prefix: newText) {
+            queryState = .streaming
+            displayResults = cachedResults
+            return
+        }
+        
+        // 5. Dim stale results immediately (synchronous)
         queryState = .typing
         dimCurrentResults()
+        
+        // 6. Start debounce task (80ms trailing-edge)
+        let currentGeneration = queryGeneration
+        debounceTask = Task { @MainActor in
+            do {
+                try await Task.sleep(nanoseconds: 80_000_000) // 80ms
+                
+                // After debounce, start search
+                guard currentGeneration == queryGeneration else { return }
+                
+                await startSearch(query: newText, generation: currentGeneration)
+            } catch {
+                // Task was cancelled, do nothing
+            }
+        }
+    }
+    
+    private func startSearch(query: String, generation: UInt64) async {
+        queryState = .searching
+        
+        searchTask = Task { @MainActor in
+            let stream = backend.search(
+                query: query,
+                filters: [],
+                scope: .all,
+                cancellationToken: CancellationToken()
+            )
+            
+            for await result in stream {
+                guard generation == queryGeneration else { break }
+                await applyResult(result, fromGeneration: generation)
+            }
+            
+            guard generation == queryGeneration else { return }
+            queryState = .complete
+        }
     }
     
     func applyResult(_ result: SearchResult, fromGeneration generation: UInt64) async {

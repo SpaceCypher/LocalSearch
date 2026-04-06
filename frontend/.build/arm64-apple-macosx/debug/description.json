@@ -40,6 +40,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift"
         },
         {
@@ -62,6 +66,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/LocalSearchApp.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchWindowController.swift.o"
       ],
@@ -132,6 +137,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o"
         },
         {
@@ -148,6 +157,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift"
       ],
@@ -258,7 +268,15 @@
       "inputs" : [
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift"
         },
         {
           "kind" : "file",
@@ -277,7 +295,9 @@
       "moduleName" : "LocalSearchTests",
       "moduleOutputPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/Modules/LocalSearchTests.swiftmodule",
       "objects" : [
-        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o"
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swift.o"
       ],
       "otherArguments" : [
         "-target",
@@ -333,7 +353,15 @@
       "outputs" : [
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swift.o"
         },
         {
           "kind" : "file",
@@ -342,7 +370,9 @@
       ],
       "prepareForIndexing" : false,
       "sources" : [
-        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift"
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift"
       ],
       "tempsPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build",
       "wholeModuleOptimization" : false
@@ -363,6 +393,7 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift",
       "-I",
@@ -490,7 +521,9 @@
       "frontend",
       "-incremental",
       "-c",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift",
       "-I",
       "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/Modules",
       "-target",
@@ -612,6 +645,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift"
         },
         {
@@ -639,6 +676,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o"
         },
         {
           "kind" : "file",
@@ -686,6 +727,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o"
         },
         {
@@ -698,7 +743,15 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swift.o"
         }
       ],
       "outputFilePath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchPackageTests.product/Objects.LinkFileList"
@@ -712,7 +765,15 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift"
         }
       ],
       "outputFilePath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/sources"

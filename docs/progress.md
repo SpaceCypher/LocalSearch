@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 2 / 22 (frontend) |
-| Tests written | 47 (backend) + 7 (frontend) = 54 |
-| Tests passing | 54 / 54 |
-| Commits | 15 |
+| Tasks complete | 13 / 46 (backend) + 3 / 22 (frontend) |
+| Tests written | 47 (backend) + 13 (frontend) = 60 |
+| Tests passing | 60 / 60 |
+| Commits | 16 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -385,10 +385,41 @@
 
 ---
 
+### ✅ Task F4 — SearchWindow NSPanel Configuration (`frontend/Sources/Views/SearchWindowController.swift`)
+**Commit:** `feat(window): NSPanel floating, non-activating, all-spaces, escape-to-dismiss`
+
+**What was built:**
+- `SearchWindowController` using `NSPanel` (not NSWindow)
+- `.nonactivatingPanel` style mask — doesn't steal focus from underlying app
+- `.floating` window level — appears above all normal windows
+- `.canJoinAllSpaces` collection behavior — visible on all desktops/spaces
+- Center-on-primary-display positioning using `NSScreen.main`
+- `handleEscapeKey()` method — dismisses window with `orderOut(nil)`
+- SwiftUI content view integration via `NSHostingView`
+
+**Tests (6/6 GREEN):**
+| Test | Result |
+|---|---|
+| `test_window_isNSPanel` | ✅ |
+| `test_window_hasNonActivatingMask` | ✅ |
+| `test_window_floatingLevel` | ✅ |
+| `test_window_appearsOnAllSpaces` | ✅ |
+| `test_window_centeredOnPrimaryDisplay` | ✅ |
+| `test_escape_dismissesWindow` | ✅ |
+
+**Key design notes:**
+- NSPanel instead of NSWindow for proper floating panel behavior
+- Non-activating means keyboard focus stays in underlying app (Spotlight-like)
+- Floating level ensures window appears above all normal windows
+- All-spaces behavior means window follows user across virtual desktops
+- Escape key always dismisses (Guarantee from spec §2)
+
+---
+
 ## In Progress
 
-### 🔄 Task 13 — WAL Ingestion Pipeline (`src/wal/mod.rs`)
-**Next backend task** (on hold while frontend is being developed)
+### 🔄 Task F3 — Debounce + Cancellation Engine
+**Next frontend task** — 80ms trailing-edge debounce with Task cancellation
 
 ---
 
@@ -397,7 +428,7 @@
 | # | Task | Key implementation |
 |---|---|---|
 | F3 | Debounce + Cancellation Engine | 80ms trailing-edge debounce, Task cancellation, prefix cache bypass |
-| F4 | SearchWindow — NSPanel Configuration | Floating, non-activating, all-spaces, escape-to-dismiss |
+| ~~F4~~ | ~~SearchWindow — NSPanel Configuration~~ | ✅ Complete |
 | F5 | Global Hotkey Registration (⌥Space) | CGEventTap, toggle show/hide behavior |
 | F6 | QueryFieldView — Search Input Component | Spinner, clear button, filter chip extraction |
 | F7 | Query Parser — Inline Filter Syntax | 8 filter types, negation, content phrase |
@@ -447,6 +478,7 @@
 ## Git Log
 
 ```
+4879c82  feat(window): NSPanel floating, non-activating, all-spaces, escape-to-dismiss
 cb9987b  feat(fs): FSEvents watcher with deduplication and MUST_SCAN_SUBDIRS handling
 5710737  feat(query): BM25 scorer with field boost and intent-weighted ranking
 e4fd0d0  docs: update progress - Task 9 complete (37/37 tests passing)
