@@ -1,11 +1,98 @@
 use unicode_normalization::UnicodeNormalization;
 use rust_stemmers::{Algorithm, Stemmer};
+use std::path::PathBuf;
+use std::collections::HashMap;
 
 /// A token extracted from text with its position
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Token {
     pub term: String,
     pub position: u32,
+}
+
+/// Query intent classification
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum QueryIntent {
+    Lookup,
+    Recovery,
+    Exploration,
+    Verification,
+}
+
+/// Parsed query with tokens, scope, filters, and intent
+#[derive(Debug, Clone, PartialEq)]
+pub struct Query {
+    pub tokens: Vec<String>,
+    pub scope: Option<PathBuf>,
+    pub intent: QueryIntent,
+    pub filters: HashMap<String, String>,
+}
+
+impl Query {
+    /// Parse a query string into structured Query
+    pub fn parse(text: &str) -> Result<Self, String> {
+        let tokenizer = Tokenizer::new();
+        let mut tokens = Vec::new();
+        let mut scope = None;
+        let mut filters = HashMap::new();
+        
+        // Split query into parts
+        let parts: Vec<&str> = text.split_whitespace().collect();
+        
+        for part in parts {
+            if part.starts_with("in:") {
+                // Extract scope
+                let path = part.strip_prefix("in:").unwrap();
+                scope = Some(PathBuf::from(path));
+            } else if part.contains(':') {
+                // Extract filters (after:, before:, ext:, etc.)
+                let mut split = part.splitn(2, ':');
+                if let (Some(key), Some(value)) = (split.next(), split.next()) {
+                    filters.insert(key.to_string(), value.to_string());
+                }
+            } else {
+                // Regular token - tokenize it
+                let token_objs = tokenizer.tokenize(part);
+                for token in token_objs {
+                    tokens.push(token.term);
+                }
+            }
+        }
+        
+        // Classify intent based on query patterns
+        let intent = Self::classify_intent(&tokens, &filters);
+        
+        Ok(Query {
+            tokens,
+            scope,
+            intent,
+            filters,
+        })
+    }
+    
+    fn classify_intent(tokens: &[String], filters: &HashMap<String, String>) -> QueryIntent {
+        // Recovery: queries with time filters
+        if filters.contains_key("after") || filters.contains_key("before") {
+            return QueryIntent::Recovery;
+        }
+        
+        // Exploration: queries with wildcards or broad terms
+        for token in tokens {
+            if token.contains('*') || token.contains('?') {
+                return QueryIntent::Exploration;
+            }
+        }
+        
+        // Verification: queries checking file existence (heuristic: contains "exists", "find", "check")
+        for token in tokens {
+            if token == "exist" || token == "find" || token == "check" {
+                return QueryIntent::Verification;
+            }
+        }
+        
+        // Default: Lookup
+        QueryIntent::Lookup
+    }
 }
 
 /// Unicode-aware tokenizer with camelCase splitting, stop word removal, and stemming
@@ -119,5 +206,25 @@ mod tests {
         let t = Tokenizer::new();
         let tokens = t.tokenize("running");
         assert!(tokens.iter().any(|t| t.term == "run"));
+    }
+
+    // Task 10: Query Parser + Intent Classification tests
+    #[test]
+    fn test_parser_scope_extraction() {
+        let q = Query::parse("report in:/Users/alice/Documents").unwrap();
+        assert_eq!(q.scope, Some(PathBuf::from("/Users/alice/Documents")));
+        assert_eq!(q.tokens, vec!["report"]);
+    }
+
+    #[test]
+    fn test_intent_lookup() {
+        let q = Query::parse("invoice").unwrap();
+        assert_eq!(q.intent, QueryIntent::Lookup);
+    }
+
+    #[test]
+    fn test_intent_recovery() {
+        let q = Query::parse("budget report after:2024-01-01").unwrap();
+        assert_eq!(q.intent, QueryIntent::Recovery);
     }
 }
