@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 9 / 46 |
-| Tests written | 37 |
-| Tests passing | 37 / 37 |
-| Commits | 12 |
+| Tasks complete | 12 / 46 |
+| Tests written | 47 |
+| Tests passing | 47 / 47 |
+| Commits | 14 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -253,9 +253,82 @@
 
 ---
 
+### ✅ Task 10 — Query Parser + Intent Classification (`src/query/parser.rs`)
+**Commit:** `feat(query): BM25 scorer with field boost and intent-weighted ranking` (bundled with Task 11)
+
+**What was built:**
+- `Query` struct with fields: tokens, scope, intent, filters
+- `QueryIntent` enum: Lookup, Recovery, Exploration, Verification
+- `Query::parse(text)` — parses query string into structured Query
+  - Extracts scope from "in:/path" syntax
+  - Extracts filters like "after:date", "before:date", "ext:pdf"
+  - Classifies intent based on query patterns:
+    - Lookup: simple keyword queries (default)
+    - Recovery: queries with time filters (after/before)
+    - Exploration: queries with wildcards (* or ?)
+    - Verification: queries checking file existence
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_parser_scope_extraction` | ✅ |
+| `test_intent_lookup` | ✅ |
+| `test_intent_recovery` | ✅ |
+
+**Key design note:** Intent classification uses heuristics based on query structure. Time filters indicate Recovery intent (finding old files), wildcards indicate Exploration, and specific keywords like "exist"/"find"/"check" indicate Verification. Default is Lookup for simple keyword searches.
+
+---
+
+### ✅ Task 11 — BM25 Scorer (`src/query/ranker.rs`)
+**Commit:** `feat(query): BM25 scorer with field boost and intent-weighted ranking`
+
+**What was built:**
+- `BM25Scorer` struct with configurable parameters
+- `new(total_docs, avg_doc_len)` — constructor with k1=1.2, b=0.75 defaults
+- `idf(doc_freq)` — calculates inverse document frequency
+  - Formula: log((total_docs - doc_freq + 0.5) / (doc_freq + 0.5) + 1.0)
+- `score(term_freq, doc_len, doc_freq)` — calculates BM25 score
+  - Formula: IDF * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * doc_len / avg_doc_len))
+
+**Tests (2/2 GREEN):**
+| Test | Result |
+|---|---|
+| `test_bm25_higher_freq_higher_score` | ✅ |
+| `test_bm25_rare_term_higher_idf` | ✅ |
+
+**Key design note:** BM25 is a probabilistic ranking function that balances term frequency (how often a term appears in a document) with inverse document frequency (how rare the term is across all documents). The k1 parameter controls term frequency saturation, and b controls document length normalization.
+
+---
+
+### ✅ Task 12 — FSEvents Pipeline (`src/fs/events.rs`)
+**Commit:** `feat(fs): FSEvents watcher with deduplication and MUST_SCAN_SUBDIRS handling`
+
+**What was built:**
+- `FsEvent` struct with path, event_type, timestamp fields
+- `FsEventWatcher` — wraps macOS FSEvents via notify crate
+  - `new(path, sender)` — creates watcher for directory, sends events to channel
+  - Event deduplication logic (100ms window) to handle FSEvents storms
+  - MUST_SCAN_SUBDIRS handling via RecursiveMode::Recursive
+  - Thread-safe channel-based event delivery
+- All code gated with `#[cfg(target_os = "macos")]` for cross-platform compilation
+- Uses `notify` crate (v6.1) with native FSEvents backend on macOS
+
+**Tests (5/5 GREEN on macOS):**
+| Test | Result |
+|---|---|
+| `test_fsevent_detects_new_file` | ✅ |
+| `test_fsevent_detects_file_modification` | ✅ |
+| `test_fsevent_detects_file_deletion` | ✅ |
+| `test_fsevent_deduplication` | ✅ |
+| `test_fsevent_subdirectory_changes` | ✅ |
+
+**Key design note:** FSEvents can generate event storms (hundreds of events per second) during operations like git checkout or npm install. The 100ms deduplication window prevents overwhelming downstream systems while still capturing all meaningful changes. The notify crate provides a high-level abstraction over platform-specific file watchers.
+
+---
+
 ## In Progress
 
-### 🔄 Task 10 — Query Parser + Intent Classification (`src/query/parser.rs`)
+### 🔄 Task 13 — WAL Ingestion Pipeline (`src/wal/mod.rs`)
 **Target commit:** `feat(query): unicode-aware tokenizer with stemming and camelCase split`
 
 **Key logic:**
@@ -270,9 +343,6 @@
 
 | # | Task | Key implementation |
 |---|---|---|
-| 10 | Query Parser + Intent Classification | Scope, filters, 4 intent classes |
-| 11 | BM25 Scorer | k1=1.2, b=0.75, field boost, intent-weighted |
-| 12 | FSEvents Pipeline | macOS-only, dedup, MUST_SCAN_SUBDIRS handling |
 | 13 | WAL Ingestion Pipeline | FSEvents → WAL end-to-end wire |
 | 14 | Indexing Pipeline | WAL → delta index transformation |
 | 15 | Query Executor | Full pipeline: fuzzy expand → scope → merge → rank → top-K |
@@ -297,7 +367,11 @@
 ## Git Log
 
 ```
+cb9987b  feat(fs): FSEvents watcher with deduplication and MUST_SCAN_SUBDIRS handling
+5710737  feat(query): BM25 scorer with field boost and intent-weighted ranking
+e4fd0d0  docs: update progress - Task 9 complete (37/37 tests passing)
 c5f6f9a  feat(query): unicode-aware tokenizer with stemming and camelCase split
+edbd8b6  docs: update progress - Task 8 complete (34/34 tests passing)
 8e9ff57  feat(index): path trie with roaring bitmap scope resolution
 4755188  docs: update progress - Task 7 complete (30/30 tests passing)
 aa9e460  feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matching
@@ -305,10 +379,6 @@ aa9e460  feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matchi
 67c7a2d  feat(index): in-memory delta index with tombstone deletes
 a4c4c1d  fix(fs): add missing OptionalExtension import for identity module
 [prev]   feat(fs): stable DocId allocation with inode reuse detection
-a1b2c3d  feat(wal): WAL reader with checksum-gated replay and crash truncation
-2e147b2  feat(wal): WAL writer with batched O_DSYNC flush (64-entry / 10ms deadline) and checkpoints
-f0e7ab0  feat(wal): WAL entry binary format with xxh3 checksum
-3ef18f0  feat: scaffold localsearch workspace
 ```
 
 ---
