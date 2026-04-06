@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 8 / 46 |
-| Tests written | 34 |
-| Tests passing | 34 / 34 |
-| Commits | 11 |
+| Tasks complete | 9 / 46 |
+| Tests written | 37 |
+| Tests passing | 37 / 37 |
+| Commits | 12 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -229,9 +229,33 @@
 
 ---
 
+### ✅ Task 9 — Tokenizer (`src/query/parser.rs`)
+**Commit:** `feat(query): unicode-aware tokenizer with stemming and camelCase split`
+
+**What was built:**
+- `Token` — term with position (doc_id, term, position)
+- `Tokenizer` — Unicode-aware tokenizer with:
+  - Unicode NFC normalization using `unicode-normalization` crate
+  - camelCase splitting (e.g., "AppDelegate" → "app", "delegate")
+  - Stop word removal (48 common English words: "the", "a", "an", etc.)
+  - Porter stemming using `rust-stemmers` crate (e.g., "running" → "run")
+- `tokenize(text)` — converts text to normalized, stemmed tokens
+- `split_camel_case(word)` — detects uppercase boundaries in camelCase words
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_tokenizer_camelcase_split` | ✅ |
+| `test_tokenizer_stop_words_removed` | ✅ |
+| `test_tokenizer_stems` | ✅ |
+
+**Key design note:** The tokenizer operates on Unicode code points (not bytes) and normalizes to NFC form before processing. camelCase detection looks for lowercase-to-uppercase transitions. The Porter stemmer reduces words to their root form for better matching (e.g., "running", "runs", "ran" all stem to "run").
+
+---
+
 ## In Progress
 
-### 🔄 Task 9 — Tokenizer (`src/query/parser.rs`)
+### 🔄 Task 10 — Query Parser + Intent Classification (`src/query/parser.rs`)
 **Target commit:** `feat(query): unicode-aware tokenizer with stemming and camelCase split`
 
 **Key logic:**
@@ -246,7 +270,6 @@
 
 | # | Task | Key implementation |
 |---|---|---|
-| 9 | Tokenizer | Unicode NFC, camelCase split, stop words, Porter stemmer |
 | 10 | Query Parser + Intent Classification | Scope, filters, 4 intent classes |
 | 11 | BM25 Scorer | k1=1.2, b=0.75, field boost, intent-weighted |
 | 12 | FSEvents Pipeline | macOS-only, dedup, MUST_SCAN_SUBDIRS handling |
@@ -274,6 +297,7 @@
 ## Git Log
 
 ```
+c5f6f9a  feat(query): unicode-aware tokenizer with stemming and camelCase split
 8e9ff57  feat(index): path trie with roaring bitmap scope resolution
 4755188  docs: update progress - Task 7 complete (30/30 tests passing)
 aa9e460  feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matching
