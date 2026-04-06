@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 7 / 46 |
-| Tests written | 30 |
-| Tests passing | 30 / 30 |
-| Commits | 9 |
+| Tasks complete | 8 / 46 |
+| Tests written | 34 |
+| Tests passing | 34 / 34 |
+| Commits | 11 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -204,15 +204,41 @@
 
 ---
 
+### ✅ Task 8 — Path Trie + Roaring Bitmap Scope (`src/index/trie.rs`)
+**Commit:** `feat(index): path trie with roaring bitmap scope resolution`
+
+**What was built:**
+- `PathTrie` — compressed trie for efficient path-based scope queries
+  - `insert(path, doc_id)` — adds document to trie at its path location
+  - `scope_query(scope)` — returns all DocIds under a path prefix
+  - `collect_all_docs(node)` — recursively gathers all documents in subtree
+- `TrieNode` — trie node with Roaring bitmap for documents and child map
+- Path splitting: splits paths by `/` and builds trie from components
+- Roaring bitmap operations: efficient set union for collecting documents
+- O(path_depth) insertion and O(path_depth + result_size) query
+
+**Tests (4/4 GREEN):**
+| Test | Result |
+|---|---|
+| `test_trie_scope_query_returns_correct_docs` | ✅ |
+| `test_trie_scope_query_includes_subdirectories` | ✅ |
+| `test_trie_scope_query_nonexistent_path` | ✅ |
+| `test_trie_multiple_docs_same_path` | ✅ |
+
+**Key design note:** The trie uses Roaring bitmaps for space-efficient DocId storage. Scope queries recursively collect all documents from the target node and its descendants, enabling efficient "search in folder" functionality. The bitmap union operation is very fast, making scope filtering O(1) per document during query execution.
+
+---
+
 ## In Progress
 
-### 🔄 Task 8 — Path Trie + Roaring Bitmap Scope (`src/index/trie.rs`)
-**Target commit:** `feat(index): path trie with roaring bitmap scope resolution`
+### 🔄 Task 9 — Tokenizer (`src/query/parser.rs`)
+**Target commit:** `feat(query): unicode-aware tokenizer with stemming and camelCase split`
 
 **Key logic:**
-- Compressed radix trie for path prefix queries
-- Roaring bitmaps for efficient DocId set operations
-- O(1) scope filtering per document via bitmap AND
+- Unicode NFC normalization
+- camelCase splitting (AppDelegate → app, delegate)
+- Stop word removal
+- Porter stemming
 
 ---
 
@@ -220,7 +246,6 @@
 
 | # | Task | Key implementation |
 |---|---|---|
-| 8 | Path Trie + Roaring Bitmap Scope | O(1) scope filter per document |
 | 9 | Tokenizer | Unicode NFC, camelCase split, stop words, Porter stemmer |
 | 10 | Query Parser + Intent Classification | Scope, filters, 4 intent classes |
 | 11 | BM25 Scorer | k1=1.2, b=0.75, field boost, intent-weighted |
@@ -249,6 +274,8 @@
 ## Git Log
 
 ```
+8e9ff57  feat(index): path trie with roaring bitmap scope resolution
+4755188  docs: update progress - Task 7 complete (30/30 tests passing)
 aa9e460  feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matching
 54bab5e  docs: update progress - Task 6 complete (26/26 tests passing)
 67c7a2d  feat(index): in-memory delta index with tombstone deletes
