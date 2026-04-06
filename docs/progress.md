@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 5 / 46 |
-| Tests written | 24 |
-| Tests passing | 24 / 24 |
-| Commits | 5 |
+| Tasks complete | 6 / 46 |
+| Tests written | 26 |
+| Tests passing | 26 / 26 |
+| Commits | 7 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -154,17 +154,39 @@
 
 ---
 
+### ✅ Task 6 — Delta Index (`src/index/delta.rs`)
+**Commit:** `feat(index): in-memory delta index with tombstone deletes`
+
+**What was built:**
+- `DeltaIndex` — in-memory inverted index with 50MB budget
+  - `insert_document(doc, postings)` — adds document and its term postings to index
+  - `delete_document(doc_id)` — marks document as deleted via tombstone (doesn't remove from index)
+  - `is_deleted(doc_id)` — checks if document is tombstoned
+  - `lookup(term)` — returns posting list for a term
+- `Posting` — term occurrence in a document (doc_id, term_freq, field_mask, positions)
+- `PostingList` — list of postings for a term
+- `Document` — document metadata (doc_id, path)
+- Field constants: `FIELD_FILENAME`, `FIELD_PATH`, `FIELD_CONTENT`, `FIELD_TAGS`
+
+**Tests (2/2 GREEN):**
+| Test | Result |
+|---|---|
+| `test_delta_insert_and_lookup` | ✅ |
+| `test_delta_delete_tombstone` | ✅ |
+
+**Key design note:** Deletes use tombstones rather than immediate removal from the index. This allows for efficient batch compaction later and maintains posting list stability during concurrent queries.
+
+---
+
 ## In Progress
 
-### 🔄 Task 6 — Delta Index (`src/index/delta.rs`)
-**Target commit:** `feat(index): in-memory delta index with tombstone deletes`
+### 🔄 Task 7 — BK-Tree Fuzzy Matching (`src/index/bktree.rs`)
+**Target commit:** `feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matching`
 
 **Key logic:**
-- In-memory inverted index holding recent changes
-- HashMap-based term → posting list structure
-- Tombstone deletes (HashSet of deleted DocIds)
-- Size tracking with configurable budget (default 50MB)
-- Triggers compaction when size exceeds limit
+- Damerau-Levenshtein edit distance on Unicode code points (not bytes)
+- Edit distance ≤ 2 for fuzzy matching
+- BK-tree structure for efficient similarity search
 
 ---
 
@@ -172,7 +194,6 @@
 
 | # | Task | Key implementation |
 |---|---|---|
-| 6 | Delta Index | In-memory inverted index, tombstone deletes, 50MB budget |
 | 7 | BK-Tree Fuzzy Matching | Damerau-Levenshtein on Unicode code points, edit distance ≤ 2 |
 | 8 | Path Trie + Roaring Bitmap Scope | O(1) scope filter per document |
 | 9 | Tokenizer | Unicode NFC, camelCase split, stop words, Porter stemmer |
@@ -203,6 +224,7 @@
 ## Git Log
 
 ```
+67c7a2d  feat(index): in-memory delta index with tombstone deletes
 a4c4c1d  fix(fs): add missing OptionalExtension import for identity module
 [prev]   feat(fs): stable DocId allocation with inode reuse detection
 a1b2c3d  feat(wal): WAL reader with checksum-gated replay and crash truncation
