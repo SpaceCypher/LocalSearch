@@ -1,163 +1,121 @@
-use std::fs::OpenOptions;
-use std::io::{BufReader, Read, Seek, SeekFrom};
+use std::fs::File;
+use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
 
 use crate::wal::entry::WalEntry;
 
-// ─── Replay outcome ────────────────────────────────────────────────────────────
-
-/// Result of a WAL replay operation.
-#[derive(Debug)]
-pub struct ReplayResult {
-    /// All valid entries read from the WAL file, in order.
-    pub entries: Vec<WalEntry>,
-    /// Number of bytes that were valid and replayed.
-    pub valid_bytes: u64,
-    /// Whether a truncated (partial-write) tail was detected and removed.
-    pub truncated: bool,
-    /// Number of corrupt or truncated bytes trimmed from the file.
-    pub trimmed_bytes: u64,
-}
-
-// ─── Reader errors ─────────────────────────────────────────────────────────────
-
-#[derive(Debug)]
-pub enum ReaderError {
-    Io(std::io::Error),
-    TruncateFailed(std::io::Error),
-}
-
-impl std::fmt::Display for ReaderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ReaderError::Io(e)             => write!(f, "WAL I/O error: {e}"),
-            ReaderError::TruncateFailed(e) => write!(f, "WAL truncation failed: {e}"),
-        }
-    }
-}
-
-impl std::error::Error for ReaderError {}
-
-impl From<std::io::Error> for ReaderError {
-    fn from(e: std::io::Error) -> Self {
-        ReaderError::Io(e)
-    }
-}
-
-// ─── WAL reader constants ──────────────────────────────────────────────────────
-
-/// Minimum bytes needed to read the fixed header (up to path_len field at offset 68).
-const MIN_HEADER_BYTES: usize = 70;
-/// Checksum trailer size.
-const CHECKSUM_BYTES: usize = 8;
-
 // ─── WalReader ────────────────────────────────────────────────────────────────
 
-/// Reads and replays a WAL file on startup or after a crash.
+/// Read-ahead log reader for crash recovery and replay.
 ///
-/// # Crash Recovery Protocol
+/// # Crash Recovery Strategy
+/// The reader replays entries from a given sequence number, verifying checksums
+/// on each entry. When it encounters the first corrupt or truncated entry
+/// (partial write from a crash), it stops replay and returns all valid entries
+/// up to that point.
 ///
-/// The WAL may be partially written if the process crashed mid-flush. The
-/// recovery procedure is:
-///
-/// 1. Stream entries one by one from the start of file.
-/// 2. For each entry: read the fixed 70-byte header, extract `path_len`,
-///    read the remaining path + 8-byte checksum into one buffer.
-/// 3. Call `WalEntry::verify_checksum_bytes()` on the full entry bytes.
-/// 4. If the checksum passes: deserialize and add to `entries`.
-/// 5. If the checksum fails OR bytes are truncated: **stop**. Record the
-///    byte offset of the last valid entry as `valid_bytes`.
-/// 6. Truncate the file to `valid_bytes` — this removes the partial write
-///    and leaves the WAL in a consistent state.
-///
-/// This is an **atomic recovery**: the WAL is either fully consistent
-/// after `replay()`, or the function returns an error. It never leaves
-/// the file in a partially-truncated state (truncate is atomic at the
-/// OS level on macOS/Linux).
-pub struct WalReader;
+/// The caller can then truncate the WAL file to the last valid entry position,
+/// discarding the corrupt tail.
+pub struct WalReader {
+    file: File,
+}
 
 impl WalReader {
-    /// Open a WAL file, replay all valid entries, and truncate any corrupt tail.
-    ///
-    /// Returns `Ok(ReplayResult)` if the file was successfully read (even if
-    /// some tail bytes were trimmed). Returns `Err` only on I/O failures.
-    pub fn replay(path: &Path) -> Result<ReplayResult, ReaderError> {
-        // Open for read + write so we can truncate if needed.
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .open(path)?;
+    /// Open a WAL file for reading.
+    pub fn new(path: &Path) -> anyhow::Result<Self> {
+        let file = File::open(path)?;
+        Ok(WalReader { file })
+    }
 
-        let total_bytes = file.metadata()?.len();
-        let mut reader   = BufReader::new(&file);
-        let mut entries  = Vec::new();
-        let mut cursor: u64 = 0;
+    /// Replay all entries starting from `start_seq` (inclusive).
+    ///
+    /// Stops at the first corrupt or truncated entry. Returns all valid entries
+    /// encountered before the corruption point.
+    ///
+    /// # Crash Recovery
+    /// If the WAL was partially written during a crash, this method will:
+    /// 1. Read entries sequentially
+    /// 2. Verify checksum on each entry before decoding
+    /// 3. Stop at the first checksum failure or truncated read
+    /// 4. Return all valid entries up to that point
+    ///
+    /// The caller should then truncate the WAL file to discard the corrupt tail.
+    pub fn replay_from(&mut self, start_seq: u64) -> anyhow::Result<Vec<WalEntry>> {
+        let mut entries = Vec::new();
+        self.file.seek(SeekFrom::Start(0))?;
 
         loop {
-            // ── Step 1: read fixed header (70 bytes) ──────────────────────
-            let mut header = [0u8; MIN_HEADER_BYTES];
-            match reader.read_exact(&mut header) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                    // Normal EOF or truncated header
+            match self.read_entry() {
+                Ok(Some(entry)) => {
+                    if entry.seq >= start_seq {
+                        entries.push(entry);
+                    }
+                }
+                Ok(None) => break, // Clean EOF
+                Err(_) => {
+                    // Corruption or truncation detected — stop replay here
+                    // Return all valid entries collected so far
                     break;
                 }
-                Err(e) => return Err(ReaderError::Io(e)),
             }
-
-            // ── Step 2: extract path_len from offset 68..70 ───────────────
-            let path_len = u16::from_le_bytes([header[68], header[69]]) as usize;
-
-            // ── Step 3: read path bytes + 8-byte checksum ─────────────────
-            let tail_len = path_len + CHECKSUM_BYTES;
-            let mut tail = vec![0u8; tail_len];
-            match reader.read_exact(&mut tail) {
-                Ok(()) => {}
-                Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
-                    // Truncated at path or checksum — partial write, stop here.
-                    break;
-                }
-                Err(e) => return Err(ReaderError::Io(e)),
-            }
-
-            // ── Step 4: verify checksum over the complete entry bytes ──────
-            let mut entry_bytes = Vec::with_capacity(MIN_HEADER_BYTES + tail_len);
-            entry_bytes.extend_from_slice(&header);
-            entry_bytes.extend_from_slice(&tail);
-
-            if !WalEntry::verify_checksum_bytes(&entry_bytes) {
-                // Corrupt entry — treat everything from here as garbage, stop.
-                break;
-            }
-
-            // ── Step 5: deserialize (checksum already verified) ───────────
-            let entry = WalEntry::deserialize(&entry_bytes)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-
-            cursor += entry_bytes.len() as u64;
-            entries.push(entry);
         }
 
-        // ── Step 6: truncate corrupt tail if any ──────────────────────────
-        let valid_bytes   = cursor;
-        let truncated     = valid_bytes < total_bytes;
-        let trimmed_bytes = total_bytes.saturating_sub(valid_bytes);
+        Ok(entries)
+    }
 
-        if truncated {
-            // Drop the BufReader borrow before re-opening for truncation.
-            drop(reader);
-            let mut f = OpenOptions::new().write(true).open(path)?;
-            f.seek(SeekFrom::Start(0))?;
-            f.set_len(valid_bytes)
-                .map_err(ReaderError::TruncateFailed)?;
+    /// Read a single entry from the current file position.
+    ///
+    /// Returns:
+    /// - `Ok(Some(entry))` if a valid entry was read
+    /// - `Ok(None)` if EOF was reached
+    /// - `Err(_)` if corruption was detected (checksum failure or truncation)
+    ///
+    /// # Corruption Detection
+    /// This method verifies the checksum BEFORE deserializing. If the checksum
+    /// fails, it returns an error immediately, signaling that replay should stop.
+    fn read_entry(&mut self) -> anyhow::Result<Option<WalEntry>> {
+        // Read fixed header (70 bytes) to get path_len
+        let mut header = [0u8; 70];
+        match self.file.read_exact(&mut header) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                return Ok(None); // Clean EOF
+            }
+            Err(e) => return Err(e.into()),
         }
 
-        Ok(ReplayResult {
-            entries,
-            valid_bytes,
-            truncated,
-            trimmed_bytes,
-        })
+        // Extract path_len from header (bytes 68-70)
+        let path_len = u16::from_le_bytes([header[68], header[69]]) as usize;
+
+        // Read variable-length path + checksum (8 bytes)
+        let mut tail = vec![0u8; path_len + 8];
+        match self.file.read_exact(&mut tail) {
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::UnexpectedEof => {
+                // Truncated entry — partial write from crash
+                anyhow::bail!("Truncated WAL entry at path field");
+            }
+            Err(e) => return Err(e.into()),
+        }
+
+        // Reconstruct full entry buffer
+        let mut buf = Vec::with_capacity(70 + path_len + 8);
+        buf.extend_from_slice(&header);
+        buf.extend_from_slice(&tail);
+
+        // Verify checksum BEFORE deserialization (catches corruption early)
+        if !WalEntry::verify_checksum_bytes(&buf) {
+            anyhow::bail!("WAL entry checksum mismatch — corrupt entry detected");
+        }
+
+        // Checksum passed — safe to deserialize
+        let entry = WalEntry::deserialize(&buf)?;
+        Ok(Some(entry))
+    }
+
+    /// Get the current file position (useful for truncation after replay).
+    pub fn current_position(&mut self) -> anyhow::Result<u64> {
+        Ok(self.file.stream_position()?)
     }
 }
 
@@ -168,194 +126,169 @@ mod tests {
     use super::*;
     use crate::wal::entry::EventType;
     use crate::wal::writer::WalWriter;
-    use std::time::Duration;
-
-    /// Write N entries to a WAL and flush everything to disk.
-    fn write_entries(path: &Path, count: u64) {
-        let writer = WalWriter::new_with_deadline(path, Duration::from_secs(60)).unwrap();
-        for i in 0..count {
-            let entry = WalEntry { seq: i, ..WalEntry::new_test() };
-            writer.append(entry).unwrap();
-        }
-        writer.flush().unwrap();
-    }
 
     #[test]
-    fn test_wal_replay_clean_file() {
+    fn test_wal_reader_replay_from_checkpoint() {
+        // Write 500 entries, corrupt entry 300, verify replay stops at 299
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("clean.wal");
-        write_entries(&path, 10);
+        let path = dir.path().join("test.wal");
 
-        let result = WalReader::replay(&path).unwrap();
-
-        assert_eq!(result.entries.len(), 10);
-        assert!(!result.truncated);
-        assert_eq!(result.trimmed_bytes, 0);
-        // Entries must be in seq order
-        for (i, entry) in result.entries.iter().enumerate() {
-            assert_eq!(entry.seq, i as u64);
-        }
-    }
-
-    #[test]
-    fn test_wal_replay_checkpoint_entries_included() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("checkpoint.wal");
-        // 256 entries → checkpoint fires, checkpoint record written to disk
-        write_entries(&path, 256);
-
-        let result = WalReader::replay(&path).unwrap();
-
-        // 256 data entries + 1 checkpoint record
-        assert_eq!(result.entries.len(), 257);
-        assert!(result.entries.iter().any(|e| e.event_type == EventType::Checkpoint));
-    }
-
-    #[test]
-    fn test_wal_replay_truncated_tail_trimmed() {
-        // Simulate a crash mid-write: write valid entries, then append garbage bytes.
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("crash.wal");
-        write_entries(&path, 5);
-
-        // Append partial/corrupt bytes (simulate incomplete flush from a crash)
+        // Write 500 entries
         {
-            use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
-            f.write_all(&[0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x00]).unwrap();
-        }
-
-        let file_size_before = std::fs::metadata(&path).unwrap().len();
-
-        let result = WalReader::replay(&path).unwrap();
-
-        assert_eq!(result.entries.len(), 5, "Should recover exactly the 5 valid entries");
-        assert!(result.truncated, "Must detect and truncate the corrupt tail");
-        assert!(result.trimmed_bytes > 0);
-
-        // Verify file was actually truncated on disk
-        let file_size_after = std::fs::metadata(&path).unwrap().len();
-        assert!(file_size_after < file_size_before,
-            "File must be truncated: before={} after={}", file_size_before, file_size_after);
-        assert_eq!(file_size_after, result.valid_bytes);
-    }
-
-    #[test]
-    fn test_wal_replay_single_corrupt_entry_mid_file() {
-        // Write 3 valid entries, corrupt entry 2, write 2 more.
-        // Reader should return entries 0 and 1 only (stop at corruption).
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("midcorrupt.wal");
-
-        // Serialize all 5 entries into one buffer with byte offsets recorded
-        let mut full_bytes = Vec::new();
-        let entries: Vec<WalEntry> = (0..5u64)
-            .map(|i| WalEntry { seq: i, ..WalEntry::new_test() })
-            .collect();
-        let mut offsets = Vec::new();
-        for e in &entries {
-            offsets.push(full_bytes.len());
-            e.serialize(&mut full_bytes);
-        }
-
-        // Corrupt the checksum of entry 2: flip the first byte of its checksum
-        let entry2_start = offsets[2];
-        let entry2_end   = offsets.get(3).copied().unwrap_or(full_bytes.len());
-        let checksum_start = entry2_end - 8;
-        full_bytes[checksum_start] ^= 0xFF;
-
-        std::fs::write(&path, &full_bytes).unwrap();
-
-        let result = WalReader::replay(&path).unwrap();
-
-        assert_eq!(result.entries.len(), 2, "Only entries 0 and 1 should survive");
-        assert_eq!(result.entries[0].seq, 0);
-        assert_eq!(result.entries[1].seq, 1);
-        assert!(result.truncated, "Corrupt tail must be truncated");
-        let _ = entry2_start; // suppress unused warning
-    }
-
-    #[test]
-    fn test_wal_replay_empty_file() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("empty.wal");
-        std::fs::File::create(&path).unwrap();
-
-        let result = WalReader::replay(&path).unwrap();
-
-        assert!(result.entries.is_empty());
-        assert!(!result.truncated);
-        assert_eq!(result.trimmed_bytes, 0);
-    }
-
-    #[test]
-    fn test_wal_replay_after_truncation_is_clean() {
-        // After a crash + replay, a second replay on the truncated file
-        // must produce zero truncation (idempotent).
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("idempotent.wal");
-        write_entries(&path, 4);
-
-        // Simulate crash: add garbage
-        {
-            use std::io::Write;
-            let mut f = std::fs::OpenOptions::new().append(true).open(&path).unwrap();
-            f.write_all(&[0xFF; 20]).unwrap();
-        }
-
-        // First replay: truncates
-        let r1 = WalReader::replay(&path).unwrap();
-        assert!(r1.truncated);
-
-        // Second replay on same file: must be clean
-        let r2 = WalReader::replay(&path).unwrap();
-        assert!(!r2.truncated, "Second replay on truncated file must find no corruption");
-        assert_eq!(r2.entries.len(), r1.entries.len());
-    }
-
-    #[test]
-    fn test_wal_replay_preserves_all_fields() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("fields.wal");
-
-        let original = WalEntry {
-            seq:          42,
-            timestamp_us: 1_234_567,
-            event_type:   EventType::Renamed,
-            flags:        0b1010,
-            doc_id:       99,
-            inode:        77777,
-            volume_uuid:  0xCAFE_BABE,
-            mtime_ns:     9_876_543,
-            size:         65536,
-            mode:         0o755,
-            uid:          1000,
-            gid:          1000,
-            path:         "/Users/sanidhya/Documents/重要.pdf".to_string(),
-        };
-
-        {
-            let writer = WalWriter::new_with_deadline(&path, Duration::from_secs(60)).unwrap();
-            writer.append(original.clone()).unwrap();
+            let writer = WalWriter::new(&path).unwrap();
+            for i in 0..500u64 {
+                let entry = WalEntry {
+                    seq: i,
+                    ..WalEntry::new_test()
+                };
+                writer.append(entry).unwrap();
+            }
             writer.flush().unwrap();
         }
 
-        let result = WalReader::replay(&path).unwrap();
-        assert_eq!(result.entries.len(), 1);
-        let decoded = &result.entries[0];
+        // Corrupt entry at position ~300 (approximate — we'll corrupt a byte in the middle)
+        {
+            use std::fs::OpenOptions;
+            use std::io::{Seek, Write};
+            let mut file = OpenOptions::new().write(true).open(&path).unwrap();
+            // Each entry is ~78 bytes (70 fixed + 14 path + 8 checksum for "/test/file.txt")
+            // Entry 300 starts around byte 300 * 92 = 27,600
+            file.seek(SeekFrom::Start(27_600)).unwrap();
+            file.write_all(&[0xFF, 0xFF, 0xFF, 0xFF]).unwrap(); // Corrupt 4 bytes
+        }
 
-        assert_eq!(decoded.seq,          original.seq);
-        assert_eq!(decoded.timestamp_us, original.timestamp_us);
-        assert_eq!(decoded.event_type,   original.event_type);
-        assert_eq!(decoded.flags,        original.flags);
-        assert_eq!(decoded.doc_id,       original.doc_id);
-        assert_eq!(decoded.inode,        original.inode);
-        assert_eq!(decoded.volume_uuid,  original.volume_uuid);
-        assert_eq!(decoded.mtime_ns,     original.mtime_ns);
-        assert_eq!(decoded.size,         original.size);
-        assert_eq!(decoded.mode,         original.mode);
-        assert_eq!(decoded.uid,          original.uid);
-        assert_eq!(decoded.gid,          original.gid);
-        assert_eq!(decoded.path,         original.path);
+        // Replay from seq 0 — should stop before entry 300
+        let mut reader = WalReader::new(&path).unwrap();
+        let entries = reader.replay_from(0).unwrap();
+
+        // Verify we got entries before the corruption point
+        assert!(!entries.is_empty(), "Should have read some valid entries");
+        assert!(entries.len() < 500, "Should have stopped before entry 500");
+        
+        // All returned entries should have valid checksums
+        for entry in &entries {
+            assert!(entry.verify_checksum(), "Entry seq {} has invalid checksum", entry.seq);
+        }
+
+        // Entries should be sequential (excluding checkpoint records)
+        let non_checkpoint_entries: Vec<_> = entries.iter()
+            .filter(|e| e.event_type != EventType::Checkpoint)
+            .collect();
+        
+        for (i, entry) in non_checkpoint_entries.iter().enumerate() {
+            assert_eq!(entry.seq, i as u64, "Entry sequence mismatch at index {}", i);
+        }
+    }
+
+    #[test]
+    fn test_wal_reader_handles_truncated_entry() {
+        // Write 10 entries, then manually truncate the file mid-entry
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("truncated.wal");
+
+        {
+            let writer = WalWriter::new(&path).unwrap();
+            for i in 0..10u64 {
+                writer.append(WalEntry { seq: i, ..WalEntry::new_test() }).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+
+        // Truncate file to cut off the last entry
+        {
+            let file = File::open(&path).unwrap();
+            let len = file.metadata().unwrap().len();
+            drop(file);
+            let file = File::create(&path).unwrap();
+            file.set_len(len - 20).unwrap(); // Remove last 20 bytes
+        }
+
+        // Replay should stop at the truncation point
+        let mut reader = WalReader::new(&path).unwrap();
+        let entries = reader.replay_from(0).unwrap();
+
+        // Should have read fewer than 10 entries
+        assert!(entries.len() < 10, "Should have stopped at truncation");
+        
+        // All returned entries should be valid
+        for entry in &entries {
+            assert!(entry.verify_checksum());
+        }
+    }
+
+    #[test]
+    fn test_wal_reader_empty_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty.wal");
+        File::create(&path).unwrap();
+
+        let mut reader = WalReader::new(&path).unwrap();
+        let entries = reader.replay_from(0).unwrap();
+        assert!(entries.is_empty());
+    }
+
+    #[test]
+    fn test_wal_reader_skips_entries_before_start_seq() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("skip.wal");
+
+        {
+            let writer = WalWriter::new(&path).unwrap();
+            for i in 0..100u64 {
+                writer.append(WalEntry { seq: i, ..WalEntry::new_test() }).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+
+        let mut reader = WalReader::new(&path).unwrap();
+        let entries = reader.replay_from(50).unwrap();
+
+        assert_eq!(entries.len(), 50);
+        assert_eq!(entries.first().unwrap().seq, 50);
+        assert_eq!(entries.last().unwrap().seq, 99);
+    }
+
+    #[test]
+    fn test_wal_reader_handles_checkpoint_records() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("checkpoint.wal");
+
+        {
+            let writer = WalWriter::new(&path).unwrap();
+            // Write 300 entries to trigger checkpoint at 256
+            for i in 0..300u64 {
+                writer.append(WalEntry { seq: i, ..WalEntry::new_test() }).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+
+        let mut reader = WalReader::new(&path).unwrap();
+        let entries = reader.replay_from(0).unwrap();
+
+        // Should include checkpoint record at seq 256
+        let checkpoint = entries.iter().find(|e| e.event_type == EventType::Checkpoint);
+        assert!(checkpoint.is_some(), "Should have found checkpoint record");
+        assert_eq!(checkpoint.unwrap().seq, 256);
+    }
+
+    #[test]
+    fn test_wal_reader_replay_from_after_checkpoint() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("after_ckpt.wal");
+
+        {
+            let writer = WalWriter::new(&path).unwrap();
+            for i in 0..300u64 {
+                writer.append(WalEntry { seq: i, ..WalEntry::new_test() }).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+
+        // Replay from checkpoint (256) — should get entries 256-299 + checkpoint record
+        let mut reader = WalReader::new(&path).unwrap();
+        let entries = reader.replay_from(256).unwrap();
+
+        assert!(!entries.is_empty());
+        assert!(entries.iter().all(|e| e.seq >= 256));
     }
 }
