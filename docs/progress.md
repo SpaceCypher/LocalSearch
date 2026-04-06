@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 6 / 46 |
-| Tests written | 26 |
-| Tests passing | 26 / 26 |
-| Commits | 7 |
+| Tasks complete | 7 / 46 |
+| Tests written | 30 |
+| Tests passing | 30 / 30 |
+| Commits | 9 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -178,15 +178,41 @@
 
 ---
 
+### ✅ Task 7 — BK-Tree Fuzzy Matching (`src/index/bktree.rs`)
+**Commit:** `feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matching`
+
+**What was built:**
+- `BkTree` — tree structure for efficient fuzzy string search
+  - `insert(word)` — adds word to tree, organized by edit distance
+  - `search(query, max_distance)` — finds all words within max_distance edits
+- `damerau_levenshtein(a, b)` — computes edit distance on Unicode code points
+  - Supports: insertion, deletion, substitution, transposition
+  - Operates on `char` (Unicode code points), not bytes
+  - Handles Unicode correctly (e.g., "café" vs "cafe")
+- Tree structure: each node stores a word and children indexed by edit distance
+- Search optimization: prunes branches outside distance range
+
+**Tests (4/4 GREEN):**
+| Test | Result |
+|---|---|
+| `test_bktree_exact_match` | ✅ |
+| `test_bktree_edit_distance_1` | ✅ |
+| `test_bktree_edit_distance_2` | ✅ |
+| `test_bktree_unicode_safe` | ✅ |
+
+**Key design note:** The BK-Tree uses the triangle inequality property of edit distance to prune the search space. For a query with max distance d, only children at distances in range [node_distance - d, node_distance + d] need to be explored. This makes fuzzy search much faster than linear scanning.
+
+---
+
 ## In Progress
 
-### 🔄 Task 7 — BK-Tree Fuzzy Matching (`src/index/bktree.rs`)
-**Target commit:** `feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matching`
+### 🔄 Task 8 — Path Trie + Roaring Bitmap Scope (`src/index/trie.rs`)
+**Target commit:** `feat(index): path trie with roaring bitmap scope resolution`
 
 **Key logic:**
-- Damerau-Levenshtein edit distance on Unicode code points (not bytes)
-- Edit distance ≤ 2 for fuzzy matching
-- BK-tree structure for efficient similarity search
+- Compressed radix trie for path prefix queries
+- Roaring bitmaps for efficient DocId set operations
+- O(1) scope filtering per document via bitmap AND
 
 ---
 
@@ -194,7 +220,6 @@
 
 | # | Task | Key implementation |
 |---|---|---|
-| 7 | BK-Tree Fuzzy Matching | Damerau-Levenshtein on Unicode code points, edit distance ≤ 2 |
 | 8 | Path Trie + Roaring Bitmap Scope | O(1) scope filter per document |
 | 9 | Tokenizer | Unicode NFC, camelCase split, stop words, Porter stemmer |
 | 10 | Query Parser + Intent Classification | Scope, filters, 4 intent classes |
@@ -224,6 +249,8 @@
 ## Git Log
 
 ```
+aa9e460  feat(index): BK-tree with unicode-safe Damerau-Levenshtein fuzzy matching
+54bab5e  docs: update progress - Task 6 complete (26/26 tests passing)
 67c7a2d  feat(index): in-memory delta index with tombstone deletes
 a4c4c1d  fix(fs): add missing OptionalExtension import for identity module
 [prev]   feat(fs): stable DocId allocation with inode reuse detection
