@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 12 / 46 |
-| Tests written | 47 |
-| Tests passing | 47 / 47 |
-| Commits | 14 |
+| Tasks complete | 13 / 46 (backend) + 2 / 22 (frontend) |
+| Tests written | 47 (backend) + 7 (frontend) = 54 |
+| Tests passing | 54 / 54 |
+| Commits | 15 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -328,14 +328,40 @@
 
 ## In Progress
 
-### 🔄 Task 13 — WAL Ingestion Pipeline (`src/wal/mod.rs`)
-**Target commit:** `feat(query): unicode-aware tokenizer with stemming and camelCase split`
+### 🔄 Task F2 — SearchViewModel State Machine Core (`frontend/Sources/ViewModel/SearchViewModel.swift`)
+**Target commit:** `feat(vm): SearchViewModel core — state machine, generation counter, insertion sort`
 
-**Key logic:**
-- Unicode NFC normalization
-- camelCase splitting (AppDelegate → app, delegate)
-- Stop word removal
-- Porter stemming
+**What was built:**
+- `SearchViewModel` with `@MainActor` ObservableObject pattern
+- Query state machine: IDLE, TYPING, SEARCHING, STREAMING, COMPLETE
+- `queryGeneration: UInt64` counter for cancellation (monotonically incrementing)
+- `onQueryChange(_:)` — synchronous state updates, immediate stale result dimming
+- `applyResult(_:fromGeneration:)` — generation check, insertion sort, selection tracking
+- `insertResultSorted(_:)` — binary search insertion maintaining rank order
+- Selection tracking that follows documents, not positions
+- Stale result dimming (opacity 0.4) before async work starts
+- Empty query handling (transition to IDLE, clear results)
+- `MockBackend` for testing and development
+- Backend protocol: `SearchBackendProtocol` with AsyncStream patterns
+
+**Tests (7/7 GREEN):**
+| Test | Result |
+|---|---|
+| `test_initialState_isIdle` | ✅ |
+| `test_queryChange_immediatelyDimsStaleResults` | ✅ |
+| `test_generationIncrements_onEachQueryChange` | ✅ |
+| `test_emptyQuery_transitionsToIdle_clearsResults` | ✅ |
+| `test_staleResults_discarded_whenGenerationMismatch` | ✅ |
+| `test_insertResult_maintainsSortOrder` | ✅ |
+| `test_selectionTracksDocument_notPosition` | ✅ |
+
+**Key design notes:**
+- Generation counter is the source of truth for cancellation, not timing
+- All state mutations happen synchronously on MainActor before async work
+- Stale results dimmed immediately (Guarantee 2 from spec §1)
+- Selection follows document ID across rank changes, not array position
+- Binary search insertion maintains O(log n) performance for result ordering
+- Max 20 results in display list (8 visible + 12 scroll buffer)
 
 ---
 

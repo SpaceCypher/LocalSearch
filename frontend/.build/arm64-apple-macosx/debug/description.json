@@ -32,6 +32,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift"
         },
         {
@@ -56,6 +60,7 @@
       "moduleOutputPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/Modules/LocalSearch.swiftmodule",
       "objects" : [
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/LocalSearchApp.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchWindowController.swift.o"
@@ -119,6 +124,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o"
         },
         {
@@ -137,6 +146,7 @@
       "prepareForIndexing" : false,
       "sources" : [
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift"
@@ -351,6 +361,7 @@
       "-incremental",
       "-c",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift",
@@ -593,6 +604,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift"
         },
         {
@@ -620,6 +635,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/LocalSearchApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
         },
         {
           "kind" : "file",
@@ -660,6 +679,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/LocalSearchApp.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
         },
         {
           "kind" : "file",

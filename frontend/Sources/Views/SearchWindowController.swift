@@ -31,7 +31,7 @@ class SearchWindowController: NSWindowController {
         }
         
         // Create SwiftUI content view
-        let viewModel = SearchViewModel()
+        let viewModel = SearchViewModel(backend: MockBackend())
         let contentView = SearchContentView(viewModel: viewModel)
         panel.contentView = NSHostingView(rootView: contentView)
         
