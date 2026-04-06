@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 4 / 46 |
-| Tests written | 17 |
-| Tests passing | 17 / 17 |
-| Commits | 4 |
+| Tasks complete | 5 / 46 |
+| Tests written | 24 |
+| Tests passing | 24 / 24 |
+| Commits | 5 |
 | Last updated | 2026-04-06 |
 
 ---
@@ -125,18 +125,46 @@
 
 **Key design note:** Corruption detection happens at the **raw buffer level** before deserialization. When corruption is detected, `replay_from()` stops gracefully and returns all valid entries collected so far — it does NOT propagate the error. This ensures crash recovery always succeeds with partial data rather than failing completely.
 
+### ✅ Task 5 — File Identity DB (`src/fs/identity.rs`)
+**Commit:** `feat(fs): stable DocId allocation with inode reuse detection`
+
+**What was built:**
+- `DocId` — transparent wrapper around u64, never reused
+- `FileIdentity` — composite key: `(volume_uuid, inode, generation, device_id)`
+- `IdentityDb` — SQLite-backed mapping with two tables:
+  - `identity_map` — `FileIdentity` → `DocId` with unique index
+  - `metadata` — persistent counter for monotonic DocId allocation
+- `get_or_allocate()` — lookup existing or allocate new DocId
+- `allocate_next_id()` — atomic counter increment with persistence
+- Inode reuse detection via `generation` field (APFS guarantees increment on reuse)
+- Rename-stable: same file keeps same DocId across path changes
+
+**Tests (7/7 GREEN):**
+| Test | Result |
+|---|---|
+| `test_doc_id_allocation_is_stable` | ✅ |
+| `test_inode_reuse_gets_new_doc_id` | ✅ |
+| `test_doc_id_never_zero` | ✅ |
+| `test_persistence_across_reopens` | ✅ |
+| `test_counter_persists_across_reopens` | ✅ |
+| `test_doc_ids_are_monotonic` | ✅ |
+| `test_different_volumes_get_different_doc_ids` | ✅ |
+
+**Key design note:** DocIds are allocated from a persistent counter that survives process restarts. The `generation` field in `FileIdentity` detects when an inode is reused for a different file after deletion, ensuring each distinct file gets a unique DocId even if the inode number is recycled.
+
 ---
 
 ## In Progress
 
-### 🔄 Task 5 — File Identity DB (`src/fs/identity.rs`)
-**Target commit:** `feat(fs): stable DocId allocation with inode reuse detection`
+### 🔄 Task 6 — Delta Index (`src/index/delta.rs`)
+**Target commit:** `feat(index): in-memory delta index with tombstone deletes`
 
 **Key logic:**
-- SQLite-backed `(volume_uuid, inode, generation)` → stable `DocId` mapping
-- Monotonically increasing DocId counter (never reused)
-- Inode reuse detection via generation counter
-- Rename-stable identity (DocId unchanged across renames)
+- In-memory inverted index holding recent changes
+- HashMap-based term → posting list structure
+- Tombstone deletes (HashSet of deleted DocIds)
+- Size tracking with configurable budget (default 50MB)
+- Triggers compaction when size exceeds limit
 
 ---
 
@@ -144,8 +172,6 @@
 
 | # | Task | Key implementation |
 |---|---|---|
-| 4 | WAL Reader + Crash Recovery | Checksum-gated replay, stops at first corrupt entry |
-| 5 | File Identity DB | SQLite-backed `(volume_uuid, inode, generation)` → stable `DocId` |
 | 6 | Delta Index | In-memory inverted index, tombstone deletes, 50MB budget |
 | 7 | BK-Tree Fuzzy Matching | Damerau-Levenshtein on Unicode code points, edit distance ≤ 2 |
 | 8 | Path Trie + Roaring Bitmap Scope | O(1) scope filter per document |
@@ -177,6 +203,8 @@
 ## Git Log
 
 ```
+a4c4c1d  fix(fs): add missing OptionalExtension import for identity module
+[prev]   feat(fs): stable DocId allocation with inode reuse detection
 a1b2c3d  feat(wal): WAL reader with checksum-gated replay and crash truncation
 2e147b2  feat(wal): WAL writer with batched O_DSYNC flush (64-entry / 10ms deadline) and checkpoints
 f0e7ab0  feat(wal): WAL entry binary format with xxh3 checksum
