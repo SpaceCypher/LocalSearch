@@ -83,6 +83,66 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(vm.selectedIndex, 1)
         XCTAssertEqual(vm.displayResults[1].id, "A")
     }
+    
+    // MARK: - Task F3: Debounce + Cancellation Tests
+    
+    func test_debounce_firesAfter80ms() async throws {
+        let backend = TrackingBackend()
+        let vm = SearchViewModel(backend: backend)
+
+        vm.onQueryChange("hello")
+
+        // Before debounce: no search issued
+        XCTAssertEqual(backend.searchCallCount, 0)
+
+        // After 90ms: search fires
+        try await Task.sleep(nanoseconds: 90_000_000)
+        XCTAssertEqual(backend.searchCallCount, 1)
+    }
+
+    func test_rapidTyping_firesOnlyOneSearch() async throws {
+        let backend = TrackingBackend()
+        let vm = SearchViewModel(backend: backend)
+
+        vm.onQueryChange("h")
+        vm.onQueryChange("he")
+        vm.onQueryChange("hel")
+        vm.onQueryChange("hell")
+        vm.onQueryChange("hello")
+
+        try await Task.sleep(nanoseconds: 90_000_000) // Wait past debounce
+
+        // Only 1 search despite 5 keystrokes
+        XCTAssertEqual(backend.searchCallCount, 1)
+        XCTAssertEqual(backend.lastQuery, "hello")
+    }
+
+    func test_newQuery_cancels_previousSearchTask() async throws {
+        let backend = SlowBackend(delay: .milliseconds(200))
+        let vm = SearchViewModel(backend: backend)
+
+        vm.onQueryChange("first")
+        try await Task.sleep(nanoseconds: 90_000_000) // debounce fires
+
+        vm.onQueryChange("second") // cancel first, start second
+
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        // Only second query's results should be in displayResults
+        XCTAssertFalse(vm.displayResults.contains { $0.id == "first" })
+    }
+
+    // TODO: Task F3 - Implement prefix cache
+    // func test_prefixCache_hit_bypasses_debounce() async {
+    //     let vm = SearchViewModel(backend: MockBackend())
+    //     vm.prefixCache.store(prefix: "doc", results: [.mock(rank: 1.0, id: "cached")])
+    //
+    //     vm.onQueryChange("doc")
+    //
+    //     // Immediate — no 80ms wait
+    //     XCTAssertEqual(vm.displayResults.first?.id, "cached")
+    //     XCTAssertEqual(vm.queryState, .streaming) // cache hit, not idle
+    // }
 }
 
 // MARK: - Mock Extensions
@@ -97,4 +157,77 @@ extension SearchResult {
             opacity: 1.0
         )
     }
+}
+
+// MARK: - Test Backends
+
+class TrackingBackend: SearchBackendProtocol {
+    var searchCallCount = 0
+    var lastQuery: String?
+    
+    func search(
+        query: String,
+        filters: [QueryFilter],
+        scope: SearchScope,
+        cancellationToken: CancellationToken
+    ) -> AsyncStream<SearchResult> {
+        searchCallCount += 1
+        lastQuery = query
+        return AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
+    
+    func systemState() -> AsyncStream<SystemState> {
+        AsyncStream { continuation in
+            continuation.yield(.nominal)
+            continuation.finish()
+        }
+    }
+    
+    func indexProgress() -> AsyncStream<IndexProgress?> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
+    
+    func prefetchPrefix(_ prefix: String) async {}
+}
+
+class SlowBackend: SearchBackendProtocol {
+    let delay: Duration
+    
+    init(delay: Duration) {
+        self.delay = delay
+    }
+    
+    func search(
+        query: String,
+        filters: [QueryFilter],
+        scope: SearchScope,
+        cancellationToken: CancellationToken
+    ) -> AsyncStream<SearchResult> {
+        AsyncStream { continuation in
+            Task {
+                try? await Task.sleep(for: delay)
+                continuation.yield(.mock(rank: 1.0, id: query))
+                continuation.finish()
+            }
+        }
+    }
+    
+    func systemState() -> AsyncStream<SystemState> {
+        AsyncStream { continuation in
+            continuation.yield(.nominal)
+            continuation.finish()
+        }
+    }
+    
+    func indexProgress() -> AsyncStream<IndexProgress?> {
+        AsyncStream { continuation in
+            continuation.finish()
+        }
+    }
+    
+    func prefetchPrefix(_ prefix: String) async {}
 }
