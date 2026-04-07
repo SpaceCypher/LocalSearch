@@ -4,12 +4,13 @@ import Foundation
 // MARK: - Mock Extensions
 
 extension SearchResult {
-    static func mock(rank: Float, id: String = UUID().uuidString) -> SearchResult {
+    static func mock(rank: Float, id: String = UUID().uuidString, fileKind: FileKind = .document) -> SearchResult {
         SearchResult(
             id: id,
             filename: "file_\(id).txt",
             path: "/Users/test/\(id).txt",
-            rank: rank
+            rank: rank,
+            fileKind: fileKind
         )
     }
 }

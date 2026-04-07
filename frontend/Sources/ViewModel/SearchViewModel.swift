@@ -30,6 +30,33 @@ class SearchViewModel: ObservableObject {
         !queryText.isEmpty
     }
     
+    // F8: ScopeBarView state
+    @Published var activeScope: SearchScope = .all
+    @Published var activeScopes: Set<SearchScope> = []
+    
+    var filteredResults: [SearchResult] {
+        guard !activeScopes.isEmpty && !activeScopes.contains(.all) else {
+            return displayResults
+        }
+        
+        return displayResults.filter { result in
+            activeScopes.contains { scope in
+                switch scope {
+                case .all:
+                    return true
+                case .documents:
+                    return result.fileKind == .document
+                case .images:
+                    return result.fileKind == .image
+                case .code:
+                    return result.fileKind == .code
+                case .folders:
+                    return result.fileKind == .folder
+                }
+            }
+        }
+    }
+    
     init(backend: SearchBackendProtocol) {
         self.backend = backend
     }
@@ -93,6 +120,37 @@ class SearchViewModel: ObservableObject {
     func clearQuery() {
         queryText = ""
         onQueryChange("")
+    }
+    
+    // MARK: - Scope Management (F8)
+    
+    func setActiveScope(_ scope: SearchScope) {
+        activeScope = scope
+        activeScopes = [scope]
+    }
+    
+    func activateScope(_ scope: SearchScope) {
+        activeScope = scope
+        activeScopes.insert(scope)
+    }
+    
+    func handleKeyboardShortcut(_ modifiers: EventModifiers, key: String) {
+        guard modifiers.contains(.command) else { return }
+        
+        switch key {
+        case "1":
+            setActiveScope(.all)
+        case "2":
+            setActiveScope(.documents)
+        case "3":
+            setActiveScope(.images)
+        case "4":
+            setActiveScope(.code)
+        case "5":
+            setActiveScope(.folders)
+        default:
+            break
+        }
     }
     
     private func startSearch(query: String, generation: UInt64) async {
@@ -178,15 +236,23 @@ enum QueryState: Equatable {
 
 // MARK: - Search Result
 
+enum FileKind: Equatable {
+    case document
+    case image
+    case code
+    case folder
+}
+
 struct SearchResult: Identifiable, Equatable {
     let id: String
     let filename: String
     let path: String
     let rank: Float
+    let fileKind: FileKind
     var opacity: Float = 1.0
     
     static func == (lhs: SearchResult, rhs: SearchResult) -> Bool {
-        lhs.id == rhs.id && lhs.rank == rhs.rank && lhs.opacity == rhs.opacity
+        lhs.id == rhs.id && lhs.rank == rhs.rank && lhs.opacity == rhs.opacity && lhs.fileKind == rhs.fileKind
     }
 }
 

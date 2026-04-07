@@ -143,4 +143,46 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertEqual(vm.displayResults.first?.id, "cached")
         XCTAssertEqual(vm.queryState, .streaming) // cache hit, not idle
     }
+    
+    // MARK: - Task F8 - ScopeBarView Tests
+    
+    func test_scopeChange_appliesInstantly_noDebounce() async {
+        let backend = TrackingBackend()
+        let vm = SearchViewModel(backend: backend)
+        vm.displayResults = [
+            .mock(rank: 1.0, id: "doc1", fileKind: .document),
+            .mock(rank: 0.8, id: "img1", fileKind: .image)
+        ]
+        vm.queryState = .complete
+        
+        let before = Date()
+        vm.setActiveScope(.documents) // must filter client-side immediately
+        let elapsed = Date().timeIntervalSince(before)
+        
+        XCTAssertLessThan(elapsed, 0.016) // within one frame
+        XCTAssertTrue(vm.filteredResults.allSatisfy { $0.fileKind == .document })
+        XCTAssertEqual(backend.searchCallCount, 0) // no new backend call for subset filter
+    }
+    
+    func test_cmd1_5_shortcuts_switchScope() {
+        let vm = SearchViewModel(backend: MockBackend())
+        vm.handleKeyboardShortcut(.command, key: "1")
+        XCTAssertEqual(vm.activeScope, .all)
+        vm.handleKeyboardShortcut(.command, key: "2")
+        XCTAssertEqual(vm.activeScope, .documents)
+        vm.handleKeyboardShortcut(.command, key: "5")
+        XCTAssertEqual(vm.activeScope, .folders)
+    }
+    
+    func test_multipleScopes_areORd() {
+        let vm = SearchViewModel(backend: MockBackend())
+        vm.displayResults = [
+            .mock(rank: 1.0, id: "doc", fileKind: .document),
+            .mock(rank: 0.9, id: "img", fileKind: .image),
+            .mock(rank: 0.8, id: "code", fileKind: .code),
+        ]
+        vm.activateScope(.documents)
+        vm.activateScope(.images) // both active simultaneously
+        XCTAssertEqual(vm.filteredResults.count, 2) // doc + image, not code
+    }
 }
