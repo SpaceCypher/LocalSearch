@@ -16,11 +16,11 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 28 / 46 (backend) + 13 / 22 (frontend) |
+| Tasks complete | 29 / 46 (backend) + 13 / 22 (frontend) |
 | Tests written | 97 (backend) + 60 (frontend) = 157 |
 | Tests passing | 157 / 157 |
-| Commits | 50 |
-| Last updated | 2026-04-07 |
+| Commits | 51 |
+| Last updated | 2026-04-08 |
 
 ---
 
@@ -1321,6 +1321,39 @@ None — ready for Task F8 (ScopeBarView)
 - Miss rate must be < 1% (minimal false negatives)
 - Tests 100-file corpus with nested directory structure
 - All 97 tests passing (94 lib + 3 parity)
+
+---
+
+### ✅ Task 29 — Production Checklist Verification
+**Commit:** `chore: production checklist gate — all chaos scenarios pass`
+
+**What was verified:**
+- All 97 backend tests passing (94 lib + 3 parity)
+- All 5 chaos scenario tests passing:
+  - `test_wal_corruption_recovery` — WAL corruption handling ✅
+  - `test_mid_compaction_disk_full` — disk full during compaction ✅
+  - `test_extractor_crash_does_not_panic_main_process` — XPC crash isolation ✅
+  - `test_permission_denied_handled_gracefully` — EACCES handling ✅
+  - `test_fsevent_storm` — FSEvents storm handling (macOS only) ✅
+- Parity test validates index-disk consistency (< 1% miss rate, 0% phantom rate)
+- All unit tests, integration tests, and chaos tests pass
+
+**Production readiness gates verified:**
+- ✅ All unit + integration tests pass
+- ✅ All chaos scenarios pass
+- ✅ Parity test enforces < 1% miss rate threshold
+- ✅ WAL corruption recovery works correctly
+- ✅ Disk full during compaction handled gracefully
+- ✅ XPC extractor crash isolation prevents main process crash
+- ✅ Permission denied errors handled without panic
+- ✅ FSEvents storm handling with hot path priority
+
+**Key design notes:**
+- Production checklist from implementation_spec.md §14.1 verified
+- All chaos scenarios from Task 20 passing as CI gates
+- Index-disk parity test from Task 28 validates consistency
+- System is production-ready for next phase of development
+- All 97 backend tests passing
 
 ---
 
