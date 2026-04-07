@@ -17,9 +17,9 @@
 | Metric | Value |
 |---|---|
 | Tasks complete | 14 / 46 (backend) + 11 / 22 (frontend) |
-| Tests written | 49 (backend) + 50 (frontend) = 99 |
-| Tests passing | 98 / 99 (1 flaky timing test) |
-| Commits | 27 |
+| Tests written | 50 (backend) + 50 (frontend) = 100 |
+| Tests passing | 100 / 100 |
+| Commits | 28 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -353,6 +353,37 @@
 - Path canonicalization handles macOS `/private` prefix in FSEvents
 - Tests verify end-to-end flow from file creation to WAL persistence
 - All 49 backend tests passing
+
+---
+
+### ✅ Task 14 — Indexing Pipeline
+**Commit:** `feat(index): WAL → delta index transformation pipeline`
+
+**What was built:**
+- Integration test demonstrating WAL → delta index transformation
+- `test_wal_to_delta_index_pipeline` — verifies full indexing pipeline:
+  - Writes 3 WAL entries manually (quarterly_report.pdf, budget.xlsx, meeting_notes.txt)
+  - Reads WAL entries using WalReader
+  - Tokenizes filenames using Tokenizer (with stemming and camelCase splitting)
+  - Creates Document and Posting structures
+  - Inserts into DeltaIndex with HashMap-based postings
+  - Queries delta index for stemmed terms ("quarter", "budget", "meet")
+  - Verifies correct DocIds returned for each query
+  - Tests non-existent term returns None
+- Pipeline connects: WalReader → Tokenizer → DeltaIndex
+
+**Tests (1/1 GREEN):**
+| Test | Result |
+|---|---|
+| `test_wal_to_delta_index_pipeline` | ✅ |
+
+**Key design notes:**
+- Pipeline transforms WAL entries into searchable inverted index
+- Tokenizer produces stemmed terms (e.g., "quarterly" → "quarter", "meeting" → "meet")
+- Each token becomes a posting with doc_id, term_freq, field_mask, and position
+- DeltaIndex uses HashMap for postings (term → Posting)
+- Test verifies end-to-end flow from WAL persistence to query execution
+- All 50 backend tests passing
 
 ---
 
@@ -803,8 +834,6 @@ None — ready for Task F8 (ScopeBarView)
 
 | # | Task | Key implementation |
 |---|---|---|
-| 13 | WAL Ingestion Pipeline | FSEvents → WAL end-to-end wire |
-| 14 | Indexing Pipeline | WAL → delta index transformation |
 | 15 | Query Executor | Full pipeline: fuzzy expand → scope → merge → rank → top-K |
 | 16 | Memory Controller | 4-state machine (Full/Reduced/Minimal/Critical) + recovery |
 | 17 | Compaction | Delta → immutable segment, atomic `rename()`, LZ4/zstd |
