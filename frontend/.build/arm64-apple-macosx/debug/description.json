@@ -48,6 +48,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ScopeBarView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift"
         },
         {
@@ -68,6 +80,9 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/QueryParser.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultRowView.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ScopeBarView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchWindowController.swift.o"
       ],
       "otherArguments" : [
@@ -145,6 +160,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultRowView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ScopeBarView.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchWindowController.swift.o"
         },
         {
@@ -159,6 +186,9 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Query/QueryParser.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ScopeBarView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift"
       ],
       "tempsPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build",
@@ -280,6 +310,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift"
         },
         {
@@ -310,6 +344,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryParserTests.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/ResultRowViewTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/TestHelpers.swift.o"
@@ -380,6 +415,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/ResultRowViewTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o"
         },
         {
@@ -400,6 +439,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryParserTests.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/TestHelpers.swift"
@@ -425,6 +465,9 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Query/QueryParser.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ScopeBarView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift",
       "-I",
       "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/Modules",
@@ -554,6 +597,7 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryParserTests.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/TestHelpers.swift",
@@ -686,6 +730,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ScopeBarView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift"
         }
       ],
@@ -713,6 +769,18 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/QueryParser.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultRowView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ScopeBarView.swift.o"
         },
         {
           "kind" : "file",
@@ -764,6 +832,18 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultRowView.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ScopeBarView.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o"
         },
         {
@@ -785,6 +865,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryParserTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/ResultRowViewTests.swift.o"
         },
         {
           "kind" : "file",
@@ -819,6 +903,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryParserTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift"
         },
         {
           "kind" : "file",

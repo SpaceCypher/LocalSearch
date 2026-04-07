@@ -3,4 +3,7 @@
 /Users/sanidhyakumar/Documents/findohh/frontend/Sources/Query/QueryParser.swift
 /Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift
 /Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift
+/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift
+/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift
+/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ScopeBarView.swift
 /Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift
