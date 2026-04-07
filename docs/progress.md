@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 5 / 22 (frontend) |
-| Tests written | 47 (backend) + 20 (frontend) = 67 |
-| Tests passing | 67 / 67 |
-| Commits | 18 |
+| Tasks complete | 13 / 46 (backend) + 6 / 22 (frontend) |
+| Tests written | 47 (backend) + 28 (frontend) = 75 |
+| Tests passing | 75 / 75 |
+| Commits | 19 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -418,7 +418,46 @@
 
 ## In Progress
 
-None — ready for Task F6 (QueryFieldView)
+### 🔄 Task F6 — QueryFieldView (Search Input Component)
+**Status:** Ready to implement
+**Next:** Restore QueryFieldViewTests.swift.bak, implement QueryFieldView with spinner/clear button
+
+### ✅ Task F7 — Query Parser (Inline Filter Syntax)
+**Commit:** `feat(query): inline filter parser — 8 filter types, negation, content phrase`
+
+**What was built:**
+- `QueryParser` class with `parse(_:)` static method
+- `ParsedQuery` struct with `filters: [QueryFilter]` and `strippedText: String`
+- `QueryFilter` enum with 8 filter types:
+  - `kind(String)` — file type filter (e.g., "kind:pdf")
+  - `path(String)` — path scope filter (e.g., "in:/Documents")
+  - `after(String)` — date filter (e.g., "after:2024-01-01")
+  - `before(String)` — date filter (e.g., "before:2024-12-31")
+  - `size(String)` — size filter (e.g., "size:>1MB")
+  - `tag(String)` — tag filter (e.g., "tag:important")
+  - `contentPhrase(String)` — exact phrase match (e.g., content:"hello world")
+  - `negation(String)` — exclude term (e.g., "-unwanted")
+- Filter extraction with regex patterns
+- Stripped text generation (removes filters, preserves query terms)
+
+**Tests (8/8 GREEN):**
+| Test | Result |
+|---|---|
+| `test_parse_noFilters_returnsFullText` | ✅ |
+| `test_parse_kindFilter` | ✅ |
+| `test_parse_pathScope` | ✅ |
+| `test_parse_dateFilter_after` | ✅ |
+| `test_parse_sizeFilter` | ✅ |
+| `test_parse_contentPhrase` | ✅ |
+| `test_parse_negation` | ✅ |
+| `test_parse_multipleFilters` | ✅ |
+
+**Key design notes:**
+- Regex-based filter extraction for 8 filter types
+- Stripped text preserves query terms after filter removal
+- Content phrase uses quoted string syntax
+- Negation uses minus prefix (e.g., "-term")
+- Multiple filters can be combined in single query
 
 ---
 
@@ -586,6 +625,7 @@ None — ready for Task F6 (QueryFieldView)
 ## Git Log
 
 ```
+e7c25f2  feat(query): inline filter parser — 8 filter types, negation, content phrase
 40868e3  fix(vm): refactor debounce to stored properties, wire HotkeyManager to window controller
 fd7f48f  feat(vm): 80ms trailing-edge debounce with task cancellation and prefix cache bypass
 4879c82  feat(window): NSPanel floating, non-activating, all-spaces, escape-to-dismiss
