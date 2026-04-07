@@ -1,4 +1,4 @@
-use crate::fs::identity::DocId;
+use crate::index::delta::DocId;
 use std::collections::{HashMap, HashSet};
 
 /// Trigram-based fuzzy index using Jaccard similarity
