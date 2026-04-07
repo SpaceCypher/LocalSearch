@@ -81,7 +81,18 @@ fn test_fsevent_detection() {
     // Wait for FSEvent to arrive
     let event = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     
-    // Verify event was detected (canonicalize paths for comparison on macOS)
-    assert_eq!(event.path.canonicalize().unwrap(), test_file.canonicalize().unwrap());
+    // Verify event was detected
+    // Note: FSEvents may report the parent directory instead of the specific file
+    // This is expected behavior on macOS
+    let event_path_canon = event.path.canonicalize().unwrap();
+    let test_file_canon = test_file.canonicalize().unwrap();
+    let watch_dir_canon = watch_dir.canonicalize().unwrap();
+    
+    // Accept either the file path or the parent directory path
+    assert!(
+        event_path_canon == test_file_canon || event_path_canon == watch_dir_canon,
+        "Event path should be either the file or its parent directory. Got: {:?}, expected: {:?} or {:?}",
+        event_path_canon, test_file_canon, watch_dir_canon
+    );
     assert_eq!(event.event_type, entry::EventType::Created);
 }
