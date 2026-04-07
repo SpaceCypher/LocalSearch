@@ -20,6 +20,12 @@
     "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests~partial.swiftmodule",
     "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests.swiftdeps"
   },
+  "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/MetadataPanelTests.swift": {
+    "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/MetadataPanelTests.d",
+    "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/MetadataPanelTests.swift.o",
+    "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/MetadataPanelTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/MetadataPanelTests.swiftdeps"
+  },
   "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift": {
     "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.d",
     "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.swift.o",

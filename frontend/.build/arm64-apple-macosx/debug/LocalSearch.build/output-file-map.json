@@ -38,6 +38,12 @@
     "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel~partial.swiftmodule",
     "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swiftdeps"
   },
+  "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift": {
+    "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.d",
+    "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.swift.o",
+    "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView~partial.swiftmodule",
+    "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.swiftdeps"
+  },
   "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift": {
     "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.d",
     "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o",
