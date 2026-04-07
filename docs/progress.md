@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 27 / 46 (backend) + 13 / 22 (frontend) |
-| Tests written | 94 (backend) + 60 (frontend) = 154 |
-| Tests passing | 154 / 154 |
-| Commits | 48 |
+| Tasks complete | 28 / 46 (backend) + 13 / 22 (frontend) |
+| Tests written | 97 (backend) + 60 (frontend) = 157 |
+| Tests passing | 157 / 157 |
+| Commits | 50 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -1287,13 +1287,50 @@ None — ready for Task F8 (ScopeBarView)
 
 ---
 
+### ✅ Task 28 — Index-Disk Parity Test
+**Commit:** `test: index-disk parity test — catches silent index divergence`
+
+**What was built:**
+- `tests/parity.rs` — integration test that validates index completeness
+- `test_index_disk_parity_basic()` — main parity test
+  - Creates 100 test files across 10 nested directories
+  - Indexes all files using IdentityDb and DeltaIndex
+  - Compares disk files vs indexed files using HashSet operations
+  - Detects phantom documents (in index but not on disk)
+  - Detects missing documents (on disk but not in index)
+  - Enforces < 1% miss rate threshold from spec
+- `test_parity_detects_phantom_docs()` — validates phantom detection
+  - Simulates index with extra document not on disk
+  - Verifies phantom is detected correctly
+- `test_parity_detects_missing_docs()` — validates missing detection
+  - Simulates incomplete index missing one file
+  - Verifies missing file is detected correctly
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_index_disk_parity_basic` | ✅ |
+| `test_parity_detects_phantom_docs` | ✅ |
+| `test_parity_detects_missing_docs` | ✅ |
+
+**Key design notes:**
+- Regression detector that catches silent index divergence
+- Uses walkdir to enumerate all files on disk (ground truth)
+- Compares against indexed documents using set operations
+- Phantom rate must be 0% (no false positives)
+- Miss rate must be < 1% (minimal false negatives)
+- Tests 100-file corpus with nested directory structure
+- All 97 tests passing (94 lib + 3 parity)
+
+---
+
 ## Upcoming (Backend - On Hold) (Frontend)
 
 | # | Task | Key implementation |
 |---|---|---|
 | 21 | Rust ↔ Swift FFI | C ABI: `localsearch_query`, `localsearch_free_results` |
 | 22 | Suffix Array | O(log n) substring search + rebuild-window fallback |
-| 28 | Index-Disk Parity Test | `tests/parity.rs` — catches silent index divergence |
+| 29 | Production Checklist | All chaos scenarios as CI gates |
 | 28 | Index-Disk Parity Test | `tests/parity.rs` — catches silent index divergence |
 | 29 | Production Checklist | All chaos scenarios as CI gates |
 | 30–46 | Advanced features | N-gram, Phonetic, Prefix Cache, ResultProvider, Thread Registry, Fault Injector, Security/TCC, External Volumes, Spotlight Fallback, Benchmarks, Health Dashboard, Signal DB |
