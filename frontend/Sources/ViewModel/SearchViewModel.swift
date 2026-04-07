@@ -21,6 +21,15 @@ class SearchViewModel: ObservableObject {
     // Prefix cache (F3)
     let prefixCache = PrefixCache()
     
+    // F6: QueryFieldView state
+    @Published var showSpinner: Bool = false
+    @Published var parsedFilters: [QueryFilter] = []
+    @Published var strippedQueryText: String = ""
+    
+    var showClearButton: Bool {
+        !queryText.isEmpty
+    }
+    
     init(backend: SearchBackendProtocol) {
         self.backend = backend
     }
@@ -36,7 +45,15 @@ class SearchViewModel: ObservableObject {
         queryGeneration &+= 1
         queryText = newText
         
-        // 3. Handle empty query
+        // 3. Parse query for filters (F6)
+        let parsed = QueryParser.parse(newText)
+        parsedFilters = parsed.filters
+        strippedQueryText = parsed.text
+        
+        // 4. Update UI state (F6)
+        showSpinner = false
+        
+        // 5. Handle empty query
         guard !newText.isEmpty else {
             queryState = .idle
             displayResults = []
@@ -44,31 +61,38 @@ class SearchViewModel: ObservableObject {
             return
         }
         
-        // 4. Check prefix cache for instant results
+        // 6. Check prefix cache for instant results
         if let cachedResults = prefixCache.lookup(prefix: newText) {
             queryState = .streaming
             displayResults = cachedResults
             return
         }
         
-        // 5. Dim stale results immediately (synchronous)
+        // 7. Dim stale results immediately (synchronous)
         queryState = .typing
         dimCurrentResults()
         
-        // 6. Start debounce task (80ms trailing-edge)
+        // 8. Start debounce task (80ms trailing-edge)
         let currentGeneration = queryGeneration
         debounceTask = Task { @MainActor in
             do {
                 try await Task.sleep(nanoseconds: 80_000_000) // 80ms
                 
-                // After debounce, start search
+                // Show spinner after debounce (F6)
                 guard currentGeneration == queryGeneration else { return }
+                showSpinner = true
                 
+                // After debounce, start search
                 await startSearch(query: newText, generation: currentGeneration)
             } catch {
                 // Task was cancelled, do nothing
             }
         }
+    }
+    
+    func clearQuery() {
+        queryText = ""
+        onQueryChange("")
     }
     
     private func startSearch(query: String, generation: UInt64) async {
@@ -77,7 +101,7 @@ class SearchViewModel: ObservableObject {
         searchTask = Task { @MainActor in
             let stream = backend.search(
                 query: query,
-                filters: [],
+                filters: parsedFilters,
                 scope: .all,
                 cancellationToken: CancellationToken()
             )
@@ -89,6 +113,7 @@ class SearchViewModel: ObservableObject {
             
             guard generation == queryGeneration else { return }
             queryState = .complete
+            showSpinner = false // Hide spinner when complete (F6)
         }
     }
     

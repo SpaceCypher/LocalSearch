@@ -52,38 +52,3 @@ class QueryFieldViewTests: XCTestCase {
         XCTAssertEqual(vm.strippedQueryText, "report")
     }
 }
-
-// MARK: - Mock Backends for Testing
-
-class ImmediateBackend: SearchBackendProtocol {
-    let results: [SearchResult]
-    
-    init(results: [SearchResult]) {
-        self.results = results
-    }
-    
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
-        AsyncStream { continuation in
-            for result in results {
-                continuation.yield(result)
-            }
-            continuation.finish()
-        }
-    }
-    
-    func systemState() -> AsyncStream<SystemState> {
-        AsyncStream { continuation in
-            continuation.yield(.nominal)
-            continuation.finish()
-        }
-    }
-    
-    func indexProgress() -> AsyncStream<IndexProgress?> {
-        AsyncStream { continuation in
-            continuation.yield(nil)
-            continuation.finish()
-        }
-    }
-    
-    func prefetchPrefix(_ prefix: String) async {}
-}
