@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 30 / 46 (backend) + 15 / 22 (frontend) |
-| Tests written | 101 (backend) + 71 (frontend) = 172 |
-| Tests passing | 172 / 172 |
-| Commits | 55 |
+| Tasks complete | 30 / 46 (backend) + 16 / 22 (frontend) |
+| Tests written | 101 (backend) + 74 (frontend) = 175 |
+| Tests passing | 175 / 175 |
+| Commits | 57 |
 | Last updated | 2026-04-08 |
 
 ---
@@ -1192,6 +1192,36 @@ None — ready for Task F8 (ScopeBarView)
 - Filter-broadening tip helps users understand why results are limited
 - Degraded-mode note explains when fuzzy matching is paused
 - All 71 frontend tests passing (66 existing + 5 new)
+
+---
+
+### ✅ Task F16 — Permission-Denied Result Row
+**Commit:** `feat(view): permission-denied result row — lock icon, inline label, system settings alert`
+
+**What was built:**
+- Added `PermissionState` enum with `.granted` and `.revoked` cases
+- Added `permissionState` property to `SearchResult` (default: `.granted`)
+- Updated `ResultRowView` to show lock icon for revoked permissions
+- Lock icon displayed at 60% opacity for permission-denied files
+- Path row replaced with "Permission denied" text for revoked files
+- Added `AlerterProtocol` for showing system alerts
+- Added alert handling in `handleReturnKey()` for permission-denied files
+- Alert shows "Open System Settings" button for permission issues
+- Created `MockAlerter` for testing alert behavior
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_revokedPermission_showsLockIcon` | ✅ |
+| `test_revokedPermission_pathRowReplacedWithDeniedLabel` | ✅ |
+| `test_revokedPermission_enterKey_showsSystemSettingsAlert` | ✅ |
+
+**Key design notes:**
+- Lock icon (lock.fill) replaces file type icon for permission-denied files
+- Icon opacity reduced to 60% to indicate inaccessible state
+- Path row shows "Permission denied" instead of file path
+- Return key on permission-denied file shows alert with System Settings deeplink
+- All 74 frontend tests passing (71 existing + 3 new)
 
 ---
 
