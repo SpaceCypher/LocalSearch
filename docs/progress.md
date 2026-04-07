@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 19 / 46 (backend) + 11 / 22 (frontend) |
-| Tests written | 73 (backend) + 50 (frontend) = 123 |
-| Tests passing | 123 / 123 |
-| Commits | 36 |
+| Tasks complete | 20 / 46 (backend) + 11 / 22 (frontend) |
+| Tests written | 78 (backend) + 50 (frontend) = 128 |
+| Tests passing | 128 / 128 |
+| Commits | 37 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -1003,6 +1003,38 @@ None — ready for Task F8 (ScopeBarView)
 - madvise(MADV_WILLNEED) prefaults hot slab on warm restart for faster queries
 - WAL replay ensures no data loss after crash
 - All 73 backend tests passing
+
+---
+
+### ✅ Task 20 — Chaos Tests
+**Commit:** `test: chaos scenarios — WAL corruption, FSEvents storm, disk full, permission revocation`
+
+**What was built:**
+- `src/fs/chaos_test.rs` — 3 filesystem chaos tests
+  - `test_fsevent_storm` — simulates 50 MUST_SCAN_SUBDIRS events, verifies hot path priority
+  - `test_permission_revocation_mid_crawl` — chmod 000 mid-crawl, verifies EACCES handled gracefully
+  - `test_extractor_xpc_crash_isolation` — simulates extractor crash, verifies main process unaffected
+- `src/wal/chaos_test.rs` — 2 WAL chaos tests
+  - `test_wal_corruption_recovery` — writes 600 entries, corrupts entry 500, verifies replay stops at corruption
+  - `test_mid_compaction_disk_full` — simulates disk full during compaction, verifies temp segment cleanup
+- Fixed `test_fsevent_detection` to handle macOS FSEvents directory-level reporting
+
+**Tests (5/5 GREEN):**
+| Test | Result |
+|---|---|
+| `test_fsevent_storm` | ✅ |
+| `test_permission_revocation_mid_crawl` | ✅ |
+| `test_extractor_xpc_crash_isolation` | ✅ |
+| `test_wal_corruption_recovery` | ✅ |
+| `test_mid_compaction_disk_full` | ✅ |
+
+**Key design notes:**
+- FSEvents storm test verifies hot path priority computation (Desktop/Documents/Downloads get priority 100 vs 10)
+- Permission revocation test verifies EACCES error handling without panicking
+- XPC crash isolation test verifies error propagation pattern
+- WAL corruption test corrupts entry 500 by flipping bits, verifies replay stops before corruption
+- Disk full test simulates interrupted compaction by creating temp file, verifies cleanup on restart
+- All 78 backend tests passing
 
 ---
 
