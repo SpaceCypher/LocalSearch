@@ -182,12 +182,12 @@ protocol SearchBackendProtocol {
 
 // MARK: - Supporting Types
 
-struct QueryFilter: Equatable {
-    // Placeholder
-}
-
-enum SearchScope {
+enum SearchScope: Equatable, CaseIterable {
     case all
+    case documents
+    case images
+    case code
+    case folders
 }
 
 struct CancellationToken {
