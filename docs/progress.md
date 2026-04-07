@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 14 / 46 (backend) + 11 / 22 (frontend) |
-| Tests written | 50 (backend) + 50 (frontend) = 100 |
-| Tests passing | 100 / 100 |
-| Commits | 28 |
+| Tasks complete | 15 / 46 (backend) + 11 / 22 (frontend) |
+| Tests written | 51 (backend) + 50 (frontend) = 101 |
+| Tests passing | 101 / 101 |
+| Commits | 30 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -384,6 +384,39 @@
 - DeltaIndex uses HashMap for postings (term → Posting)
 - Test verifies end-to-end flow from WAL persistence to query execution
 - All 50 backend tests passing
+
+---
+
+### ✅ Task 15 — Query Executor
+**Commit:** `feat(query): full query executor with fuzzy expansion, scope filter, and BM25 ranking`
+
+**What was built:**
+- `QueryExecutor` struct with full query execution pipeline
+- `SearchResult` struct with doc_id, path, and score
+- `execute(query)` method implementing 5-step pipeline:
+  1. Tokenize query terms and fuzzy expand using BK-tree (max edit distance 1)
+  2. Apply scope filter using PathTrie if query has scope
+  3. Query delta index for each expanded term
+  4. Calculate BM25 scores and accumulate for multi-term queries
+  5. Sort by score (descending) and return top-K (20 results)
+- `build_test_executor()` helper — creates executor with indexed test documents
+- Integration with all index components: DeltaIndex, BkTree, PathTrie, BM25Scorer, Tokenizer
+- Tombstone filtering (skips deleted documents)
+- Scope filtering (only returns documents within query scope)
+
+**Tests (1/1 GREEN):**
+| Test | Result |
+|---|---|
+| `test_executor_end_to_end` | ✅ |
+
+**Key design notes:**
+- Full query pipeline: parse → tokenize → fuzzy expand → scope filter → lookup → score → rank
+- Fuzzy matching uses BK-tree with edit distance 1 (handles typos like "quartely" → "quarterly")
+- Multi-term queries accumulate scores across all matching terms
+- Scope filtering uses Roaring bitmap intersection for efficiency
+- BM25 scoring balances term frequency with document frequency
+- Top-K selection returns best 20 results sorted by relevance
+- All 51 backend tests passing
 
 ---
 
@@ -834,7 +867,6 @@ None — ready for Task F8 (ScopeBarView)
 
 | # | Task | Key implementation |
 |---|---|---|
-| 15 | Query Executor | Full pipeline: fuzzy expand → scope → merge → rank → top-K |
 | 16 | Memory Controller | 4-state machine (Full/Reduced/Minimal/Critical) + recovery |
 | 17 | Compaction | Delta → immutable segment, atomic `rename()`, LZ4/zstd |
 | 18 | Integrity Check + Metrics | 1000-doc parity sample, SQLite ring buffer |
