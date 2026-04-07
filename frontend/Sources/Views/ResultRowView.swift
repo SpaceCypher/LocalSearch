@@ -11,6 +11,7 @@ struct ResultRowView: View {
                 .font(.system(size: 24))
                 .foregroundColor(.secondary)
                 .frame(width: 32, height: 32)
+                .opacity(iconOpacity)
             
             VStack(alignment: .leading, spacing: 4) {
                 // Filename
@@ -19,7 +20,7 @@ struct ResultRowView: View {
                     .lineLimit(1)
                 
                 // Path
-                Text(displayPath)
+                Text(pathRowText)
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
@@ -35,12 +36,31 @@ struct ResultRowView: View {
     }
     
     var iconName: String {
+        if result.permissionState == .revoked {
+            return "lock.fill"
+        }
+        
         switch result.fileKind {
         case .document: return "doc.text"
         case .image: return "photo"
         case .code: return "chevron.left.forwardslash.chevron.right"
         case .folder: return "folder"
         }
+    }
+    
+    var showsLockIcon: Bool {
+        result.permissionState == .revoked
+    }
+    
+    var iconOpacity: Double {
+        result.permissionState == .revoked ? 0.6 : 1.0
+    }
+    
+    var pathRowText: String {
+        if result.permissionState == .revoked {
+            return "Permission denied"
+        }
+        return displayPath
     }
     
     var displayFilename: String {

@@ -4,13 +4,14 @@ import Foundation
 // MARK: - Mock Extensions
 
 extension SearchResult {
-    static func mock(rank: Float, id: String = UUID().uuidString, fileKind: FileKind = .document) -> SearchResult {
+    static func mock(rank: Float, id: String = UUID().uuidString, fileKind: FileKind = .document, permissionState: PermissionState = .granted) -> SearchResult {
         SearchResult(
             id: id,
             filename: "file_\(id).txt",
             path: "/Users/test/\(id).txt",
             rank: rank,
-            fileKind: fileKind
+            fileKind: fileKind,
+            permissionState: permissionState
         )
     }
 }
@@ -123,5 +124,32 @@ class TrackingBackend: SearchBackendProtocol {
     
     func spellingSuggestions(for query: String) async -> [String] {
         return []
+    }
+}
+
+
+// MARK: - Mock Alerter
+
+class MockAlert {
+    let title: String
+    let message: String
+    let buttons: [String]
+    
+    init(title: String, message: String, buttons: [String]) {
+        self.title = title
+        self.message = message
+        self.buttons = buttons
+    }
+    
+    func hasButton(_ buttonText: String) -> Bool {
+        return buttons.contains(buttonText)
+    }
+}
+
+class MockAlerter: AlerterProtocol {
+    var lastAlert: MockAlert?
+    
+    func showAlert(title: String, message: String, buttons: [String]) {
+        lastAlert = MockAlert(title: title, message: message, buttons: buttons)
     }
 }

@@ -88,6 +88,9 @@ class SearchViewModel: ObservableObject {
     private var isNavigatingHistory: Bool = false
     private var isProgrammaticQueryChange: Bool = false
     
+    // F16: Alerter for permission-denied dialogs
+    var alerter: AlerterProtocol?
+    
     // F14: Index progress
     @Published var indexProgress: IndexProgress? = nil
     
@@ -275,6 +278,16 @@ class SearchViewModel: ObservableObject {
         guard let index = selectedIndex, index < filteredResults.count else { return }
         let result = filteredResults[index]
         
+        // Check for permission-denied state
+        if result.permissionState == .revoked {
+            alerter?.showAlert(
+                title: "Permission Denied",
+                message: "This file cannot be accessed. Grant permission in System Settings.",
+                buttons: ["Open System Settings", "Cancel"]
+            )
+            return
+        }
+        
         if modifiers.contains(.command) {
             // Reveal in Finder
             NSWorkspace.shared.selectFile(result.path, inFileViewerRootedAtPath: "")
@@ -386,6 +399,11 @@ enum FileKind: Equatable {
     case folder
 }
 
+enum PermissionState: Equatable {
+    case granted
+    case revoked
+}
+
 struct SearchResult: Identifiable, Equatable {
     let id: String
     let filename: String
@@ -393,9 +411,10 @@ struct SearchResult: Identifiable, Equatable {
     let rank: Float
     let fileKind: FileKind
     var opacity: Float = 1.0
+    var permissionState: PermissionState = .granted
     
     static func == (lhs: SearchResult, rhs: SearchResult) -> Bool {
-        lhs.id == rhs.id && lhs.rank == rhs.rank && lhs.opacity == rhs.opacity && lhs.fileKind == rhs.fileKind
+        lhs.id == rhs.id && lhs.rank == rhs.rank && lhs.opacity == rhs.opacity && lhs.fileKind == rhs.fileKind && lhs.permissionState == rhs.permissionState
     }
 }
 
@@ -472,4 +491,11 @@ class PrefixCache {
     func clear() {
         cache.removeAll()
     }
+}
+
+
+// MARK: - Alerter Protocol
+
+protocol AlerterProtocol {
+    func showAlert(title: String, message: String, buttons: [String])
 }

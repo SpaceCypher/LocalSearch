@@ -61,4 +61,27 @@ final class ResultRowViewTests: XCTestCase {
             XCTAssertTrue(row.displayPath.hasPrefix("…/"))
         }
     }
+    
+    func test_revokedPermission_showsLockIcon() {
+        let result = SearchResult.mock(rank: 1.0, permissionState: .revoked)
+        let row = ResultRowView(result: result, isSelected: false)
+        XCTAssertTrue(row.showsLockIcon)
+        XCTAssertEqual(row.iconOpacity, 0.6)
+    }
+    
+    func test_revokedPermission_pathRowReplacedWithDeniedLabel() {
+        let result = SearchResult.mock(rank: 1.0, permissionState: .revoked)
+        let row = ResultRowView(result: result, isSelected: false)
+        XCTAssertEqual(row.pathRowText, "Permission denied")
+    }
+    
+    func test_revokedPermission_enterKey_showsSystemSettingsAlert() {
+        let vm = SearchViewModel(backend: MockBackend())
+        let alerter = MockAlerter()
+        vm.alerter = alerter
+        vm.displayResults = [.mock(rank: 1.0, permissionState: .revoked)]
+        vm.selectedIndex = 0
+        vm.handleReturnKey(modifiers: [])
+        XCTAssertTrue(alerter.lastAlert?.hasButton("Open System Settings") ?? false)
+    }
 }
