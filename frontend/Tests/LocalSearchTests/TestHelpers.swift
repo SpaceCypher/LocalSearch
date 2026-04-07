@@ -48,6 +48,10 @@ class ImmediateBackend: SearchBackendProtocol {
     }
     
     func prefetchPrefix(_ prefix: String) async {}
+    
+    func spellingSuggestions(for query: String) async -> [String] {
+        return []
+    }
 }
 
 class SlowBackend: SearchBackendProtocol {
@@ -82,6 +86,10 @@ class SlowBackend: SearchBackendProtocol {
     }
     
     func prefetchPrefix(_ prefix: String) async {}
+    
+    func spellingSuggestions(for query: String) async -> [String] {
+        return []
+    }
 }
 
 class TrackingBackend: SearchBackendProtocol {
@@ -112,4 +120,8 @@ class TrackingBackend: SearchBackendProtocol {
     }
     
     func prefetchPrefix(_ prefix: String) async {}
+    
+    func spellingSuggestions(for query: String) async -> [String] {
+        return []
+    }
 }

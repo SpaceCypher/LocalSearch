@@ -3,6 +3,8 @@ import Foundation
 // MARK: - Mock Backend for Development and Testing
 
 class MockBackend: SearchBackendProtocol {
+    var mockSuggestions: [String] = []
+    
     func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
         AsyncStream { continuation in
             continuation.finish()
@@ -25,5 +27,9 @@ class MockBackend: SearchBackendProtocol {
     
     func prefetchPrefix(_ prefix: String) async {
         // No-op for mock
+    }
+    
+    func spellingSuggestions(for query: String) async -> [String] {
+        return mockSuggestions
     }
 }

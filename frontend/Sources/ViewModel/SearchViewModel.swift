@@ -95,6 +95,32 @@ class SearchViewModel: ObservableObject {
         indexProgress != nil
     }
     
+    // F15: Zero-result state
+    @Published var spellingSuggestions: [String] = []
+    @Published var systemState: SystemState = .nominal
+    
+    var zeroResultsQuery: String {
+        queryText
+    }
+    
+    var showBroadeningTip: Bool {
+        !parsedFilters.isEmpty && displayResults.isEmpty && queryState == .complete
+    }
+    
+    var zeroResultsNote: String {
+        if systemState == .fuzzyPaused {
+            return "Exact mode active — fuzzy matching paused"
+        }
+        return ""
+    }
+    
+    func selectSuggestion(_ suggestion: String) {
+        isProgrammaticQueryChange = true
+        queryText = suggestion
+        isProgrammaticQueryChange = false
+        onQueryChange(suggestion)
+    }
+    
     init(backend: SearchBackendProtocol) {
         self.backend = backend
     }
@@ -282,6 +308,13 @@ class SearchViewModel: ObservableObject {
             guard generation == queryGeneration else { return }
             queryState = .complete
             showSpinner = false // Hide spinner when complete (F6)
+            
+            // Fetch spelling suggestions if zero results (F15)
+            if displayResults.isEmpty {
+                spellingSuggestions = await backend.spellingSuggestions(for: query)
+            } else {
+                spellingSuggestions = []
+            }
         }
     }
     
@@ -379,6 +412,7 @@ protocol SearchBackendProtocol {
     func systemState() -> AsyncStream<SystemState>
     func indexProgress() -> AsyncStream<IndexProgress?>
     func prefetchPrefix(_ prefix: String) async
+    func spellingSuggestions(for query: String) async -> [String]
 }
 
 // MARK: - Supporting Types
@@ -395,8 +429,9 @@ struct CancellationToken {
     // Placeholder
 }
 
-struct SystemState: Equatable {
-    static let nominal = SystemState()
+enum SystemState: Equatable {
+    case nominal
+    case fuzzyPaused
 }
 
 struct IndexProgress {
