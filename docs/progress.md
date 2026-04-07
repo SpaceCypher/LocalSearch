@@ -586,6 +586,7 @@ None — ready for Task F6 (QueryFieldView)
 ## Git Log
 
 ```
+40868e3  fix(vm): refactor debounce to stored properties, wire HotkeyManager to window controller
 fd7f48f  feat(vm): 80ms trailing-edge debounce with task cancellation and prefix cache bypass
 4879c82  feat(window): NSPanel floating, non-activating, all-spaces, escape-to-dismiss
 cb9987b  feat(fs): FSEvents watcher with deduplication and MUST_SCAN_SUBDIRS handling
