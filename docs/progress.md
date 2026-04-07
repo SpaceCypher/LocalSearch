@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 30 / 46 (backend) + 13 / 22 (frontend) |
-| Tests written | 101 (backend) + 60 (frontend) = 161 |
-| Tests passing | 161 / 161 |
-| Commits | 52 |
+| Tasks complete | 30 / 46 (backend) + 14 / 22 (frontend) |
+| Tests written | 101 (backend) + 66 (frontend) = 167 |
+| Tests passing | 167 / 167 |
+| Commits | 54 |
 | Last updated | 2026-04-08 |
 
 ---
@@ -1128,6 +1128,37 @@ None — ready for Task F8 (ScopeBarView)
 - Animation coordinator prevents performance issues by capping concurrent animations
 - Queue system ensures excess animations run after current ones complete
 - All 54 frontend tests passing (50 existing + 4 new)
+
+---
+
+### ✅ Task F14 — IndexProgressView
+**Commit:** `feat(view): IndexProgressView — static progress bar, phase text, ETA display`
+
+**What was built:**
+- `IndexProgressView` SwiftUI component with 28px height
+- Static (non-animated) `ProgressView` with linear style
+- Phase text display (e.g., "Indexing Documents", "Processing Images")
+- ETA display with proper singular/plural handling ("Est. 1 min" vs "Est. 4 min")
+- Added `indexProgress: IndexProgress?` property to `SearchViewModel`
+- Added `showIndexProgress` computed property (returns true when indexProgress != nil)
+- View layout: phase text on left, ETA on right, progress bar below
+
+**Tests (6/6 GREEN):**
+| Test | Result |
+|---|---|
+| `test_progressView_hidden_afterBootstrap` | ✅ |
+| `test_progressView_shown_duringBootstrap` | ✅ |
+| `test_progressBar_isStatic_notAnimated` | ✅ |
+| `test_etaText_roundsToNearestMinute` | ✅ |
+| `test_etaText_pluralMinutes` | ✅ |
+| `test_etaText_singleMinute` | ✅ |
+
+**Key design notes:**
+- Static progress bar (not pulsing) as per spec §6
+- 28px fixed height for consistent layout
+- ETA formatting with proper grammar (1 min vs 10 min)
+- Progress shown only during first-launch bootstrap
+- All 66 frontend tests passing (60 existing + 6 new)
 
 ---
 
