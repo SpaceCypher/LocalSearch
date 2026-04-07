@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 10 / 22 (frontend) |
-| Tests written | 47 (backend) + 46 (frontend) = 93 |
-| Tests passing | 92 / 93 (1 flaky timing test) |
-| Commits | 25 |
+| Tasks complete | 13 / 46 (backend) + 11 / 22 (frontend) |
+| Tests written | 47 (backend) + 50 (frontend) = 97 |
+| Tests passing | 96 / 97 (1 flaky timing test) |
+| Commits | 26 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -598,6 +598,38 @@ None — ready for Task F8 (ScopeBarView)
 - Return key actions use modifier keys for different behaviors (open, reveal, copy)
 - Metadata panel expansion tracks selected result
 - Selection clamping prevents out-of-bounds indices
+
+---
+
+### ✅ Task F11 — StatusBarView
+**Commit:** `feat(view): StatusBarView — result count, state feedback, query display`
+
+**What was built:**
+- `statusText` computed property in SearchViewModel
+- State-based status messages:
+  - Idle: "Start typing to search"
+  - Typing: "Typing…"
+  - Searching/SearchingSlow: "Searching…"
+  - Streaming: "Streaming results…"
+  - Complete: "N results" or "No results for \"query\""
+- `StatusBarView` SwiftUI component with 24px height
+- Result count with proper singular/plural handling
+- Query display in zero-result state
+
+**Tests (4/4 GREEN):**
+| Test | Result |
+|---|---|
+| `test_idleState_showsPrompt` | ✅ |
+| `test_searching_showsSearchingDots` | ✅ |
+| `test_complete_showsResultCount` | ✅ |
+| `test_zeroResults_showsQuery` | ✅ |
+
+**Key design notes:**
+- Status text switches based on query state machine
+- Zero-result state shows the query for context
+- Result count uses proper singular/plural grammar
+- Status bar provides continuous feedback to user
+- 24px fixed height for consistent layout
 
 ---
 
