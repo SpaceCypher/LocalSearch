@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 22 / 46 (backend) + 13 / 22 (frontend) |
-| Tests written | 84 (backend) + 60 (frontend) = 144 |
-| Tests passing | 144 / 144 |
-| Commits | 42 |
+| Tasks complete | 23 / 46 (backend) + 13 / 22 (frontend) |
+| Tests written | 87 (backend) + 60 (frontend) = 147 |
+| Tests passing | 147 / 147 |
+| Commits | 43 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -1158,13 +1158,44 @@ None — ready for Task F8 (ScopeBarView)
 
 ---
 
+### ✅ Task 24 — Reconciliation Worker
+**Commit:** `feat(fs): snapshot-diff reconciliation with priority queue for hot paths`
+
+**What was built:**
+- `ReconciliationDiff` struct with to_add, to_delete, to_update vectors
+- `IndexSnapshot` struct with HashSet of paths
+- `compute_reconciliation_diff()` — compares disk state against index snapshot
+  - Uses walkdir to scan filesystem recursively
+  - Detects files on disk but not in index (to_add)
+  - Detects files in index but not on disk (to_delete)
+- `compute_priority()` — assigns priority based on path
+  - Hot paths (Desktop, Documents, Downloads): priority 100
+  - Hidden/cache directories: priority 1
+  - Default: priority 10
+- Added walkdir dependency to Cargo.toml
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_reconciliation_detects_added_files` | ✅ |
+| `test_reconciliation_detects_deleted_files` | ✅ |
+| `test_hot_paths_get_higher_priority` | ✅ |
+
+**Key design notes:**
+- Reconciliation detects index-disk divergence by comparing snapshots
+- Hot path priority ensures frequently accessed directories are reconciled first
+- Uses walkdir for efficient recursive filesystem traversal
+- All 87 backend tests passing (84 existing + 3 new)
+
+---
+
 ## Upcoming (Backend - On Hold) (Frontend)
 
 | # | Task | Key implementation |
 |---|---|---|
 | 21 | Rust ↔ Swift FFI | C ABI: `localsearch_query`, `localsearch_free_results` |
 | 22 | Suffix Array | O(log n) substring search + rebuild-window fallback |
-| 24 | Reconciliation Worker | Snapshot-diff, priority queue for hot paths |
+| 25 | Content Extraction XPC | Sandboxed extractor, crash containment, 64KB extraction |
 | 25 | Content Extraction XPC | Sandboxed extractor, crash containment, 64KB extraction |
 | 26 | Power Monitor + I/O Throttling | Thermal/battery-aware compaction, `setiopolicy_np` |
 | 27 | Index Migration + Versioning | 3-tier migration, rollback backup |
