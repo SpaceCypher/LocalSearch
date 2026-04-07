@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 20 / 46 (backend) + 11 / 22 (frontend) |
-| Tests written | 78 (backend) + 50 (frontend) = 128 |
-| Tests passing | 128 / 128 |
-| Commits | 37 |
+| Tasks complete | 21 / 46 (backend) + 12 / 22 (frontend) |
+| Tests written | 81 (backend) + 54 (frontend) = 135 |
+| Tests passing | 135 / 135 |
+| Commits | 39 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -1035,6 +1035,69 @@ None — ready for Task F8 (ScopeBarView)
 - WAL corruption test corrupts entry 500 by flipping bits, verifies replay stops before corruption
 - Disk full test simulates interrupted compaction by creating temp file, verifies cleanup on restart
 - All 78 backend tests passing
+
+---
+
+### ✅ Task 22 — Suffix Array Substring Search
+**Commit:** `feat(index): suffix array for O(log n) substring search with graceful rebuild-window fallback`
+
+**What was built:**
+- `SuffixArray` struct in `src/index/segment.rs`
+- Sorted (suffix_offset, doc_id) pairs over concatenated filename blob
+- `insert(filename, doc_id)` — adds all suffixes of filename to array
+- `search_substring(query)` — binary search for O(log n) substring lookup
+- `SubstringResult` enum with `Found(Vec<DocId>)` and `FallbackRequired` variants
+- `begin_rebuild()` / `commit_rebuild()` / `is_rebuilding()` for rebuild state management
+- During rebuild, `search_substring` returns `FallbackRequired` (not empty results)
+- Caller must fall back to delta index linear scan during rebuild window
+- Moved SuffixArray from bktree.rs to segment.rs per spec
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_suffix_array_exact_substring` | ✅ |
+| `test_suffix_array_mid_filename` | ✅ |
+| `test_substring_query_falls_back_during_rebuild` | ✅ |
+
+**Key design notes:**
+- Binary search over sorted suffixes provides O(log n) substring search
+- Rebuild flag prevents silent empty results during suffix array reconstruction
+- FallbackRequired signal forces caller to use delta index linear scan as fallback
+- Ensures users never see degraded search results during rebuild window
+- All 78 backend tests passing (75 existing + 3 new)
+
+---
+
+### ✅ Task F13 — Animation System
+**Commit:** `feat(system): animation tokens — 6 spring configs, reduce motion support, 4-animation cap`
+
+**What was built:**
+- `AnimationTokens` enum with 6 spring parameter sets from spec §9:
+  - `windowAppear`: 0.3s response, 0.85 damping
+  - `windowDismiss`: 0.2s response, 1.0 damping
+  - `selectionMove`: 0.15s response, 1.0 damping
+  - `resultInsertion`: 0.25s response, 0.9 damping
+  - `metadataSlide`: 0.18s response, 0.88 damping
+  - `spinnerFade`: 0.12s response, 1.0 damping
+- `respectingReduceMotion(isReduceMotion:)` — returns nil for instant transitions when reduce motion enabled
+- `AnimationCoordinator` class with max 4 concurrent animations
+- `enqueue(_:)` method — queues animations, starts immediately if under max concurrent
+- `NSWorkspace.shared.accessibilityDisplayShouldReduceMotion` integration
+
+**Tests (4/4 GREEN):**
+| Test | Result |
+|---|---|
+| `test_animationTokens_matchSpec` | ✅ |
+| `test_reduceMotion_disablesAllAnimations` | ✅ |
+| `test_maxConcurrentAnimations_is4` | ✅ |
+| `test_animationCoordinator_queuesExcess` | ✅ |
+
+**Key design notes:**
+- All spring parameters calibrated for 60fps macOS
+- Reduce motion support returns nil (instant transition) when enabled
+- Animation coordinator prevents performance issues by capping concurrent animations
+- Queue system ensures excess animations run after current ones complete
+- All 54 frontend tests passing (50 existing + 4 new)
 
 ---
 
