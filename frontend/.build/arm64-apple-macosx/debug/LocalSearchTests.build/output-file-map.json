@@ -44,6 +44,12 @@
     "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests~partial.swiftmodule",
     "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swiftdeps"
   },
+  "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/StatusBarViewTests.swift": {
+    "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/StatusBarViewTests.d",
+    "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/StatusBarViewTests.swift.o",
+    "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/StatusBarViewTests~partial.swiftmodule",
+    "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/StatusBarViewTests.swiftdeps"
+  },
   "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/TestHelpers.swift": {
     "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/TestHelpers.d",
     "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/TestHelpers.swift.o",

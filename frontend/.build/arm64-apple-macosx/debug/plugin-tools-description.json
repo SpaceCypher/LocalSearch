@@ -326,6 +326,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/StatusBarViewTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/TestHelpers.swift"
         },
         {
@@ -352,6 +356,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/ResultRowViewTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchViewModelTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/SearchWindowTests.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/StatusBarViewTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/TestHelpers.swift.o"
       ],
       "otherArguments" : [
@@ -436,6 +441,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/StatusBarViewTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/TestHelpers.swift.o"
         },
         {
@@ -452,6 +461,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/StatusBarViewTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/TestHelpers.swift"
       ],
       "tempsPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build",
@@ -611,6 +621,7 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchViewModelTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/StatusBarViewTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/TestHelpers.swift",
       "-I",
       "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/Modules",
@@ -895,6 +906,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/StatusBarViewTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/TestHelpers.swift.o"
         }
       ],
@@ -934,6 +949,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/SearchWindowTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/StatusBarViewTests.swift"
         },
         {
           "kind" : "file",

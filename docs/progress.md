@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 9 / 22 (frontend) |
-| Tests written | 47 (backend) + 40 (frontend) = 87 |
-| Tests passing | 86 / 87 (1 flaky timing test) |
-| Commits | 24 |
+| Tasks complete | 13 / 46 (backend) + 10 / 22 (frontend) |
+| Tests written | 47 (backend) + 46 (frontend) = 93 |
+| Tests passing | 92 / 93 (1 flaky timing test) |
+| Commits | 25 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -559,6 +559,45 @@ None — ready for Task F8 (ScopeBarView)
 - Left truncation shows most relevant path components (end of path)
 - LazyVStack for efficient rendering of large result sets
 - SF Symbols for consistent icon appearance across macOS versions
+
+---
+
+### ✅ Task F10 — Keyboard Navigation
+**Commit:** `feat(keyboard): arrow navigation, return key actions, query history`
+
+**What was built:**
+- `ArrowDirection` enum — up, down, left, right
+- Added `@Published var expandedResult: SearchResult?` to SearchViewModel
+- Added `var queryHistory: [String]` and `private var historyIndex: Int` to SearchViewModel
+- `handleArrowKey(_ direction: ArrowDirection)` method:
+  - Up arrow: navigates query history when query is empty, otherwise moves selection up
+  - Down arrow: moves selection down, selects first result if none selected
+  - Left arrow: collapses metadata panel
+  - Right arrow: expands metadata panel for selected result
+- `handleReturnKey(modifiers: EventModifiers)` method:
+  - No modifiers: opens file with NSWorkspace
+  - Command: reveals in Finder
+  - Option: copies path to clipboard
+- History navigation state tracking with `isNavigatingHistory` flag
+- Programmatic query change detection to preserve history navigation mode
+- Added `import AppKit` for NSWorkspace integration
+
+**Tests (6/6 GREEN):**
+| Test | Result |
+|---|---|
+| `test_downArrow_movesSelection` | ✅ |
+| `test_upArrow_clampsAtZero` | ✅ |
+| `test_rightArrow_expandsMetadata` | ✅ |
+| `test_leftArrow_collapsesMetadata` | ✅ |
+| `test_upArrow_emptyQuery_navigatesHistory` | ✅ |
+| `test_downArrow_selectsFirstResult_whenNoneSelected` | ✅ |
+
+**Key design notes:**
+- Arrow keys have dual behavior: history navigation when query is empty, result navigation otherwise
+- History navigation mode persists across multiple up/down presses
+- Return key actions use modifier keys for different behaviors (open, reveal, copy)
+- Metadata panel expansion tracks selected result
+- Selection clamping prevents out-of-bounds indices
 
 ---
 

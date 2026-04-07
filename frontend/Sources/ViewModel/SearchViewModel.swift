@@ -31,6 +31,29 @@ class SearchViewModel: ObservableObject {
         !queryText.isEmpty
     }
     
+    // F11: StatusBarView state
+    var statusText: String {
+        switch queryState {
+        case .idle:
+            return "Start typing to search"
+        case .typing:
+            return "Typing…"
+        case .searching:
+            return "Searching…"
+        case .searchingSlow:
+            return "Searching…"
+        case .streaming:
+            return "Streaming results…"
+        case .complete:
+            if displayResults.isEmpty {
+                return "No results for \"\(queryText)\""
+            } else {
+                let count = displayResults.count
+                return "\(count) result\(count == 1 ? "" : "s")"
+            }
+        }
+    }
+    
     // F8: ScopeBarView state
     @Published var activeScope: SearchScope = .all
     @Published var activeScopes: Set<SearchScope> = []
