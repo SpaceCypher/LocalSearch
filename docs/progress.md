@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 6 / 22 (frontend) |
-| Tests written | 47 (backend) + 28 (frontend) = 75 |
-| Tests passing | 75 / 75 |
-| Commits | 19 |
+| Tasks complete | 13 / 46 (backend) + 7 / 22 (frontend) |
+| Tests written | 47 (backend) + 33 (frontend) = 80 |
+| Tests passing | 80 / 80 |
+| Commits | 21 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -418,9 +418,46 @@
 
 ## In Progress
 
-### 🔄 Task F6 — QueryFieldView (Search Input Component)
-**Status:** Ready to implement
-**Next:** Restore QueryFieldViewTests.swift.bak, implement QueryFieldView with spinner/clear button
+None — ready for Task F8 (ScopeBarView)
+
+---
+
+## Completed Tasks (Frontend)
+
+### ✅ Task F6 — QueryFieldView State Integration
+**Commit:** `feat(vm): QueryFieldView state — spinner, clear button, filter parsing integration`
+
+**What was built:**
+- Added `@Published` properties to SearchViewModel:
+  - `showSpinner: Bool` — shows after 80ms debounce, hides when results arrive
+  - `parsedFilters: [QueryFilter]` — extracted filters from query
+  - `strippedQueryText: String` — query text with filters removed
+  - `showClearButton: Bool` — computed property based on queryText
+- `clearQuery()` method — resets query to empty and transitions to idle
+- Integrated QueryParser into `onQueryChange(_:)` — parses filters on every query change
+- Updated `startSearch` to pass `parsedFilters` to backend
+- Created `TestHelpers.swift` — shared mock backends and extensions for all test files
+  - `ImmediateBackend` — returns results immediately
+  - `SlowBackend` — delays results by configurable duration
+  - `TrackingBackend` — tracks search call count and last query
+  - `SearchResult.mock()` extension
+
+**Tests (5/5 GREEN):**
+| Test | Result |
+|---|---|
+| `test_queryField_showsSpinner_after80ms` | ✅ |
+| `test_queryField_hidesSpinner_whenResultsArrive` | ✅ |
+| `test_clearButton_appears_whenQueryNonEmpty` | ✅ |
+| `test_clearButton_tap_resetsToIdle` | ✅ |
+| `test_filterChip_renderedFromParsedQuery` | ✅ |
+
+**Key design notes:**
+- Spinner appears after 80ms debounce (not immediately on typing)
+- Spinner hides when search completes or is cancelled
+- Clear button visibility is computed from queryText (not stored state)
+- Filter parsing happens synchronously on every query change
+- Parsed filters are passed to backend for server-side filtering
+- Test helpers centralized to avoid duplication across test files
 
 ### ✅ Task F7 — Query Parser (Inline Filter Syntax)
 **Commit:** `feat(query): inline filter parser — 8 filter types, negation, content phrase`
@@ -461,7 +498,7 @@
 
 ---
 
-## Completed Tasks (Frontend)
+## Completed Tasks (Frontend - Previous)
 
 ### ✅ Task F3 — Debounce + Cancellation Engine
 **Commit:** `feat(vm): 80ms trailing-edge debounce with task cancellation and prefix cache bypass`
@@ -625,6 +662,8 @@
 ## Git Log
 
 ```
+5cfa653  feat(vm): QueryFieldView state — spinner, clear button, filter parsing integration
+eb38829  docs: update progress - F7 complete (28/28 tests passing)
 e7c25f2  feat(query): inline filter parser — 8 filter types, negation, content phrase
 40868e3  fix(vm): refactor debounce to stored properties, wire HotkeyManager to window controller
 fd7f48f  feat(vm): 80ms trailing-edge debounce with task cancellation and prefix cache bypass
