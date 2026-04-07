@@ -4,6 +4,7 @@ pub mod inverted;
 pub mod trie;
 pub mod bktree;
 pub mod migration;
+pub mod trigram;
 
 #[cfg(test)]
 mod pipeline_test;
