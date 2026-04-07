@@ -38,6 +38,12 @@
     "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel~partial.swiftmodule",
     "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swiftdeps"
   },
+  "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/IndexProgressView.swift": {
+    "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.d",
+    "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.swift.o",
+    "swiftmodule": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView~partial.swiftmodule",
+    "swift-dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.swiftdeps"
+  },
   "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift": {
     "dependencies": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.d",
     "object": "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.swift.o",

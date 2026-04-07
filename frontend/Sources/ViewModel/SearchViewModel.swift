@@ -88,6 +88,13 @@ class SearchViewModel: ObservableObject {
     private var isNavigatingHistory: Bool = false
     private var isProgrammaticQueryChange: Bool = false
     
+    // F14: Index progress
+    @Published var indexProgress: IndexProgress? = nil
+    
+    var showIndexProgress: Bool {
+        indexProgress != nil
+    }
+    
     init(backend: SearchBackendProtocol) {
         self.backend = backend
     }

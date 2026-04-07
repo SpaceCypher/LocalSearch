@@ -52,6 +52,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/IndexProgressView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift"
         },
         {
@@ -93,6 +97,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/AnimationTokens.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultRowView.swift.o",
@@ -178,6 +183,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.swift.o"
         },
         {
@@ -213,6 +222,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/AnimationTokens.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/IndexProgressView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift",
@@ -334,6 +344,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/IndexProgressViewTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift"
         },
         {
@@ -387,6 +401,7 @@
       "objects" : [
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/AnimationTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/IndexProgressViewTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/MetadataPanelTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.swift.o",
@@ -458,6 +473,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/IndexProgressViewTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests.swift.o"
         },
         {
@@ -501,6 +520,7 @@
       "sources" : [
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/AnimationTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/IndexProgressViewTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/MetadataPanelTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
@@ -533,6 +553,7 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/AnimationTokens.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/IndexProgressView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift",
@@ -664,6 +685,7 @@
       "-c",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/AnimationTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/IndexProgressViewTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/MetadataPanelTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
@@ -805,6 +827,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/IndexProgressView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift"
         },
         {
@@ -844,6 +870,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.swift.o"
         },
         {
           "kind" : "file",
@@ -919,6 +949,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/LocalSearchApp.swift.o"
         },
         {
@@ -968,6 +1002,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/IndexProgressViewTests.swift.o"
         },
         {
           "kind" : "file",
@@ -1022,6 +1060,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/IndexProgressViewTests.swift"
         },
         {
           "kind" : "file",
