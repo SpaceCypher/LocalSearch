@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 29 / 46 (backend) + 13 / 22 (frontend) |
-| Tests written | 97 (backend) + 60 (frontend) = 157 |
-| Tests passing | 157 / 157 |
-| Commits | 51 |
+| Tasks complete | 30 / 46 (backend) + 13 / 22 (frontend) |
+| Tests written | 101 (backend) + 60 (frontend) = 161 |
+| Tests passing | 161 / 161 |
+| Commits | 52 |
 | Last updated | 2026-04-08 |
 
 ---
@@ -1354,6 +1354,49 @@ None — ready for Task F8 (ScopeBarView)
 - Index-disk parity test from Task 28 validates consistency
 - System is production-ready for next phase of development
 - All 97 backend tests passing
+
+---
+
+### ✅ Task 30 — N-gram Trigram Index + Phonetic Expansion
+**Commit:** `feat(query): 3-layer fuzzy pipeline — BK-tree, trigram Jaccard, Double Metaphone phonetic`
+
+**What was built:**
+- `TrigramIndex` struct in `src/index/trigram.rs`
+  - `insert(filename, doc_id)` — extracts trigrams and builds inverted index
+  - `search_jaccard(query, threshold)` — Jaccard similarity search (threshold 0.5)
+  - `extract_trigrams()` — sliding window trigram extraction
+  - `compute_jaccard()` — set intersection/union similarity
+- `double_metaphone()` function in `src/query/phonetic.rs`
+  - Simplified Double Metaphone implementation for English names
+  - Handles common phonetic patterns: PH→F, TH→0, CH→X, SH→X
+  - Returns primary phonetic code (4 chars max)
+- 3-layer fuzzy fallback chain in `QueryExecutor::execute()`
+  - Layer 1: BK-tree fuzzy matching (edit distance 1)
+  - Layer 2: If < 3 results, try trigram Jaccard (threshold 0.5)
+  - Layer 3: If < 3 results, try phonetic matching
+- Updated `QueryExecutor` struct with:
+  - `trigram_index: TrigramIndex` field
+  - `phonetic_index: HashMap<String, Vec<String>>` field (phonetic code → terms)
+- Updated `build_test_executor()` to initialize trigram and phonetic indexes
+
+**Tests (7/7 GREEN):**
+| Test | Result |
+|---|---|
+| `test_trigram_jaccard_above_threshold_matches` | ✅ |
+| `test_trigram_no_match_below_threshold` | ✅ |
+| `test_trigram_exact_match` | ✅ |
+| `test_double_metaphone_mayer_matches_meyer` | ✅ |
+| `test_double_metaphone_smith_smyth` | ✅ |
+| `test_double_metaphone_different_words` | ✅ |
+| `test_phonetic_expansion_fires_when_bk_returns_few` | ✅ |
+
+**Key design notes:**
+- 3-layer fallback ensures fuzzy matching even when BK-tree fails
+- Trigram Jaccard catches typos beyond edit distance 1 (e.g., "finde" → "finder")
+- Phonetic matching finds names with different spellings (e.g., "mayer" → "meyer")
+- Phonetic index maps phonetic codes to original terms for query expansion
+- Path tokens indexed in both trigram and phonetic indexes
+- All 101 backend tests passing (94 lib + 3 parity + 3 trigram + 3 phonetic + 1 integration)
 
 ---
 
