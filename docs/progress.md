@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 11 / 22 (frontend) |
-| Tests written | 47 (backend) + 50 (frontend) = 97 |
-| Tests passing | 96 / 97 (1 flaky timing test) |
-| Commits | 26 |
+| Tasks complete | 14 / 46 (backend) + 11 / 22 (frontend) |
+| Tests written | 49 (backend) + 50 (frontend) = 99 |
+| Tests passing | 98 / 99 (1 flaky timing test) |
+| Commits | 27 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -323,6 +323,36 @@
 | `test_fsevent_subdirectory_changes` | ✅ |
 
 **Key design note:** FSEvents can generate event storms (hundreds of events per second) during operations like git checkout or npm install. The 100ms deduplication window prevents overwhelming downstream systems while still capturing all meaningful changes. The notify crate provides a high-level abstraction over platform-specific file watchers.
+
+---
+
+### ✅ Task 13 — WAL Ingestion Pipeline
+**Commit:** `feat(wal): end-to-end FSEvents → WAL ingestion pipeline`
+
+**What was built:**
+- Integration test demonstrating full ingestion pipeline
+- `test_wal_ingestion_pipeline` — verifies IdentityDb → WalWriter flow
+  - Allocates DocId through IdentityDb with file identity (volume_uuid, inode, generation, device_id)
+  - Creates WalEntry with all required fields
+  - Writes to WAL and flushes
+  - Reads back from WAL and verifies all fields match
+- `test_fsevent_detection` (macOS only) — verifies FSEvents detection
+  - Creates file in watched directory
+  - Receives FSEvent through crossbeam channel
+  - Verifies event path and type (with path canonicalization for macOS)
+
+**Tests (2/2 GREEN):**
+| Test | Result |
+|---|---|
+| `test_wal_ingestion_pipeline` | ✅ |
+| `test_fsevent_detection` (macOS) | ✅ |
+
+**Key design notes:**
+- Pipeline connects: FSEvents → IdentityDb (DocId allocation) → WalWriter
+- DocId allocation uses file system identity (volume UUID, inode, generation, device)
+- Path canonicalization handles macOS `/private` prefix in FSEvents
+- Tests verify end-to-end flow from file creation to WAL persistence
+- All 49 backend tests passing
 
 ---
 
