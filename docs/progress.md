@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 30 / 46 (backend) + 14 / 22 (frontend) |
-| Tests written | 101 (backend) + 66 (frontend) = 167 |
-| Tests passing | 167 / 167 |
-| Commits | 54 |
+| Tasks complete | 30 / 46 (backend) + 15 / 22 (frontend) |
+| Tests written | 101 (backend) + 71 (frontend) = 172 |
+| Tests passing | 172 / 172 |
+| Commits | 55 |
 | Last updated | 2026-04-08 |
 
 ---
@@ -1159,6 +1159,39 @@ None — ready for Task F8 (ScopeBarView)
 - ETA formatting with proper grammar (1 min vs 10 min)
 - Progress shown only during first-launch bootstrap
 - All 66 frontend tests passing (60 existing + 6 new)
+
+---
+
+### ✅ Task F15 — Zero-Result State + Spelling Suggestions
+**Commit:** `feat(view): ZeroResultsView — BK-tree spelling suggestions, degraded-mode explanation`
+
+**What was built:**
+- `ZeroResultsView` SwiftUI component for zero-result state
+- Spelling suggestions display with clickable buttons
+- Filter-broadening tip when active filters present
+- Degraded-mode note when fuzzy matching paused
+- Changed `SystemState` from struct to enum with `.nominal` and `.fuzzyPaused` cases
+- Added `spellingSuggestions: [String]` property to `SearchViewModel`
+- Added `spellingSuggestions(for:)` method to `SearchBackendProtocol`
+- Added `selectSuggestion(_:)` method to replace query with suggestion
+- Spelling suggestions fetched from backend when zero results returned
+- View layout: query text, suggestions row, broadening tip, degraded note
+
+**Tests (5/5 GREEN):**
+| Test | Result |
+|---|---|
+| `test_zeroResults_showsQuery` | ✅ |
+| `test_zeroResults_showsSpellingSuggestions` | ✅ |
+| `test_clickSuggestion_replacesQuery` | ✅ |
+| `test_activeFilters_showsBroadeningTip` | ✅ |
+| `test_degradedZeroResults_showsFuzzyPausedNote` | ✅ |
+
+**Key design notes:**
+- Spelling suggestions will be powered by BK-tree (top-3 within edit distance 2)
+- Suggestions are clickable and replace the query text
+- Filter-broadening tip helps users understand why results are limited
+- Degraded-mode note explains when fuzzy matching is paused
+- All 71 frontend tests passing (66 existing + 5 new)
 
 ---
 
