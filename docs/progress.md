@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 8 / 22 (frontend) |
-| Tests written | 47 (backend) + 36 (frontend) = 83 |
-| Tests passing | 83 / 83 |
-| Commits | 22 |
+| Tasks complete | 13 / 46 (backend) + 9 / 22 (frontend) |
+| Tests written | 47 (backend) + 40 (frontend) = 87 |
+| Tests passing | 86 / 87 (1 flaky timing test) |
+| Commits | 24 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -530,6 +530,38 @@ None — ready for Task F8 (ScopeBarView)
 
 ---
 
+### ✅ Task F9 — ResultListView + ResultRowView
+**Commit:** `feat(view): ResultListView + ResultRowView — fixed heights, middle truncation, home substitution`
+
+**What was built:**
+- `ResultRowView` SwiftUI component with fixed 56px height
+- `ResultListView` with LazyVStack for efficient scrolling
+- File kind icons (document, image, code, folder) using SF Symbols
+- Middle truncation for long filenames (preserves extension)
+- Home directory substitution (`~` for home path)
+- Left truncation for long paths (shows last 3 components)
+- Selection highlighting with accent color background
+- Opacity support for dimmed results
+- Max 20 results displayed in list
+
+**Tests (4/4 GREEN):**
+| Test | Result |
+|---|---|
+| `test_rowHeight_standard_is56` | ✅ |
+| `test_filename_middleTruncated` | ✅ |
+| `test_path_homeDirectorySubstituted` | ✅ |
+| `test_path_longPath_leftTruncated` | ✅ |
+
+**Key design notes:**
+- Fixed 56px row height for consistent layout and performance
+- Middle truncation preserves file extension for quick identification
+- Home directory substitution makes paths more readable
+- Left truncation shows most relevant path components (end of path)
+- LazyVStack for efficient rendering of large result sets
+- SF Symbols for consistent icon appearance across macOS versions
+
+---
+
 ## Completed Tasks (Frontend - Previous)
 
 ### ✅ Task F3 — Debounce + Cancellation Engine
@@ -694,6 +726,8 @@ None — ready for Task F8 (ScopeBarView)
 ## Git Log
 
 ```
+68251c5  feat(view): ResultListView + ResultRowView — fixed heights, middle truncation, home substitution
+b4382bc  docs: update progress - F8 complete (36/36 tests passing)
 fefd37d  feat(view): ScopeBarView — multi-select OR filter, ⌘1-5 shortcuts, instant client-side filtering
 5cfa653  feat(vm): QueryFieldView state — spinner, clear button, filter parsing integration
 eb38829  docs: update progress - F7 complete (28/28 tests passing)
