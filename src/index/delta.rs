@@ -64,7 +64,7 @@ pub struct DeltaIndex {
     /// Inverted index: term -> list of postings
     index: HashMap<String, Vec<Posting>>,
     /// Document metadata: doc_id -> document
-    documents: HashMap<DocId, Document>,
+    pub documents: HashMap<DocId, Document>,
     /// Tombstone set for deleted documents
     tombstones: HashSet<DocId>,
 }
