@@ -8,6 +8,8 @@ use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use lz4_flex::compress_prepend_size;
+use lz4_flex::decompress_size_prepended;
 
 /// Immutable segment file
 pub struct Segment {
@@ -20,10 +22,19 @@ impl Segment {
     /// Open existing segment from disk
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref().to_path_buf();
-        // For now, return empty segment (will implement full deserialization later)
+        let compressed = fs::read(&path)?;
+        
+        // Decompress with LZ4
+        let decompressed = decompress_size_prepended(&compressed)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        
+        // Deserialize term dictionary
+        let term_dict: HashMap<String, Vec<Posting>> = bincode::deserialize(&decompressed)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        
         Ok(Self {
             path,
-            term_dict: HashMap::new(),
+            term_dict,
             documents: HashMap::new(),
         })
     }
@@ -73,10 +84,14 @@ impl SegmentBuilder {
         let temp_path = final_path.with_extension("tmp");
         let mut file = fs::File::create(&temp_path)?;
         
-        // Serialize term dictionary (simplified format for now)
+        // Serialize term dictionary
         let serialized = bincode::serialize(&self.term_dict)
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
-        file.write_all(&serialized)?;
+        
+        // Compress with LZ4
+        let compressed = compress_prepend_size(&serialized);
+        
+        file.write_all(&compressed)?;
         file.sync_all()?;
         
         // Atomic rename
@@ -161,8 +176,11 @@ mod tests {
         let segment = Segment::open(&segment_path).unwrap();
         let result = segment.lookup("budget");
         
-        // For now, this will be None since we don't deserialize yet
-        // Will implement full round-trip in next iteration
+        // Verify full round-trip with LZ4 compression
+        assert!(result.is_some());
+        let postings = result.unwrap();
+        assert_eq!(postings.len(), 1);
+        assert_eq!(postings[0].doc_id, DocId(1));
         
         // Clean up
         fs::remove_file(&segment_path).unwrap();
