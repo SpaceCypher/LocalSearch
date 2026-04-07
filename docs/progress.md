@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 7 / 22 (frontend) |
-| Tests written | 47 (backend) + 33 (frontend) = 80 |
-| Tests passing | 80 / 80 |
-| Commits | 21 |
+| Tasks complete | 13 / 46 (backend) + 8 / 22 (frontend) |
+| Tests written | 47 (backend) + 36 (frontend) = 83 |
+| Tests passing | 83 / 83 |
+| Commits | 22 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -498,6 +498,38 @@ None — ready for Task F8 (ScopeBarView)
 
 ---
 
+### ✅ Task F8 — ScopeBarView (Multi-Select OR Filter)
+**Commit:** `feat(view): ScopeBarView — multi-select OR filter, ⌘1-5 shortcuts, instant client-side filtering`
+
+**What was built:**
+- `FileKind` enum — document, image, code, folder
+- Added `fileKind: FileKind` property to `SearchResult` struct
+- `ScopeBarView` SwiftUI component with scope buttons
+- Added `@Published var activeScope: SearchScope` to SearchViewModel (default: .all)
+- Added `@Published var activeScopes: Set<SearchScope>` for multi-select tracking
+- Computed property `filteredResults: [SearchResult]` — client-side OR filtering by fileKind
+- `setActiveScope(_ scope: SearchScope)` method — sets single scope, replaces set
+- `activateScope(_ scope: SearchScope)` method — adds to multi-select set
+- `handleKeyboardShortcut(_ modifiers: EventModifiers, key: String)` method — maps ⌘1-5 to scopes
+- Updated `TestHelpers.swift` mock extension to support `fileKind` parameter
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_scopeChange_appliesInstantly_noDebounce` | ✅ |
+| `test_cmd1_5_shortcuts_switchScope` | ✅ |
+| `test_multipleScopes_areORd` | ✅ |
+
+**Key design notes:**
+- Scope filtering is client-side (no backend call) — instant, within one frame
+- Multi-select uses OR logic: documents OR images shows both types
+- Keyboard shortcuts ⌘1-5 map to: All, Documents, Images, Code, Folders
+- `filteredResults` computed property filters `displayResults` by active scopes
+- Empty `activeScopes` set defaults to showing all results
+- `.all` scope bypasses filtering entirely
+
+---
+
 ## Completed Tasks (Frontend - Previous)
 
 ### ✅ Task F3 — Debounce + Cancellation Engine
@@ -662,6 +694,7 @@ None — ready for Task F8 (ScopeBarView)
 ## Git Log
 
 ```
+fefd37d  feat(view): ScopeBarView — multi-select OR filter, ⌘1-5 shortcuts, instant client-side filtering
 5cfa653  feat(vm): QueryFieldView state — spinner, clear button, filter parsing integration
 eb38829  docs: update progress - F7 complete (28/28 tests passing)
 e7c25f2  feat(query): inline filter parser — 8 filter types, negation, content phrase
