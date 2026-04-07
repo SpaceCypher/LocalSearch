@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 15 / 46 (backend) + 11 / 22 (frontend) |
-| Tests written | 51 (backend) + 50 (frontend) = 101 |
-| Tests passing | 101 / 101 |
-| Commits | 30 |
+| Tasks complete | 16 / 46 (backend) + 11 / 22 (frontend) |
+| Tests written | 56 (backend) + 50 (frontend) = 106 |
+| Tests passing | 106 / 106 |
+| Commits | 32 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -417,6 +417,41 @@
 - BM25 scoring balances term frequency with document frequency
 - Top-K selection returns best 20 results sorted by relevance
 - All 51 backend tests passing
+
+---
+
+### ✅ Task 16 — Memory Controller
+**Commit:** `feat(resource): memory pressure control loop with state machine and recovery`
+
+**What was built:**
+- `MemoryState` enum with 4 states: Full, Reduced, Minimal, Critical
+- `MemoryController` struct with state machine and budget tracking
+- `update(rss)` method — monitors RSS and transitions between states based on pressure:
+  - Full: < 65% of budget (all components in RAM)
+  - Reduced: 65-80% of budget (BK-tree evicted)
+  - Minimal: 80-95% of budget (most indexes evicted)
+  - Critical: > 95% of budget (emergency mode, flush delta)
+- `state()` method — returns current memory state
+- `state_atomic()` method — returns Arc<AtomicU8> for lock-free reader access
+- Automatic state transitions based on pressure thresholds
+- Graceful recovery when pressure drops below thresholds
+
+**Tests (5/5 GREEN):**
+| Test | Result |
+|---|---|
+| `test_memory_state_transitions_on_pressure` | ✅ |
+| `test_memory_state_reduced_at_65_percent` | ✅ |
+| `test_memory_state_critical_at_95_percent` | ✅ |
+| `test_recovery_only_when_pressure_below_50_percent` | ✅ |
+| `test_state_atomic_shared_correctly` | ✅ |
+
+**Key design notes:**
+- State machine uses AtomicU8 for lock-free access from query threads
+- Pressure thresholds: 65% (Reduced), 80% (Minimal), 95% (Critical)
+- State transitions are automatic based on RSS updates
+- Recovery happens when pressure drops below threshold for lower state
+- Atomic state allows O(1) checks on hot path without locks
+- All 56 backend tests passing
 
 ---
 
@@ -867,7 +902,7 @@ None — ready for Task F8 (ScopeBarView)
 
 | # | Task | Key implementation |
 |---|---|---|
-| 16 | Memory Controller | 4-state machine (Full/Reduced/Minimal/Critical) + recovery |
+| 17 | Compaction | Delta → immutable segment, atomic `rename()`, LZ4/zstd |
 | 17 | Compaction | Delta → immutable segment, atomic `rename()`, LZ4/zstd |
 | 18 | Integrity Check + Metrics | 1000-doc parity sample, SQLite ring buffer |
 | 19 | Cold Start Scenarios | First launch, warm restart, crash recovery |
