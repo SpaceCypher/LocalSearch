@@ -2,10 +2,11 @@
 // Memory budget: 50MB
 // Supports: insert, delete (tombstone), lookup
 
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
 /// Stable document identifier, never reused
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct DocId(pub u64);
 
@@ -16,7 +17,7 @@ pub const FIELD_CONTENT: u8 = 1 << 2;
 pub const FIELD_TAGS: u8 = 1 << 3;
 
 /// Posting entry for a single term in a document
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Posting {
     pub doc_id: DocId,
     pub term_freq: u32,
@@ -36,7 +37,7 @@ impl Posting {
 }
 
 /// Document metadata
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Document {
     pub doc_id: DocId,
     pub path: String,
@@ -62,7 +63,7 @@ pub struct PostingList {
 pub struct DeltaIndex {
     memory_budget: usize,
     /// Inverted index: term -> list of postings
-    index: HashMap<String, Vec<Posting>>,
+    pub index: HashMap<String, Vec<Posting>>,
     /// Document metadata: doc_id -> document
     pub documents: HashMap<DocId, Document>,
     /// Tombstone set for deleted documents

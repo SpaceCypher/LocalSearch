@@ -5,3 +5,4 @@ pub mod fs;
 pub mod extract;
 pub mod resource;
 pub mod metrics;
+pub mod startup;
