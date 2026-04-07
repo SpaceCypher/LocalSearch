@@ -40,10 +40,6 @@
         },
         {
           "kind" : "file",
-          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift"
-        },
-        {
-          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift"
         },
         {
@@ -66,7 +62,6 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/LocalSearchApp.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o",
-        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchWindowController.swift.o"
       ],
@@ -137,10 +132,6 @@
         },
         {
           "kind" : "file",
-          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o"
-        },
-        {
-          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o"
         },
         {
@@ -157,7 +148,6 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
-        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift"
       ],
@@ -393,7 +383,6 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
-      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/SearchWindowController.swift",
       "-I",
@@ -645,10 +634,6 @@
         },
         {
           "kind" : "file",
-          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel+Debounce.swift"
-        },
-        {
-          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift"
         },
         {
@@ -676,10 +661,6 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o"
         },
         {
           "kind" : "file",
@@ -724,10 +705,6 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
-        },
-        {
-          "kind" : "file",
-          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel+Debounce.swift.o"
         },
         {
           "kind" : "file",

@@ -132,17 +132,17 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertFalse(vm.displayResults.contains { $0.id == "first" })
     }
 
-    // TODO: Task F3 - Implement prefix cache
-    // func test_prefixCache_hit_bypasses_debounce() async {
-    //     let vm = SearchViewModel(backend: MockBackend())
-    //     vm.prefixCache.store(prefix: "doc", results: [.mock(rank: 1.0, id: "cached")])
-    //
-    //     vm.onQueryChange("doc")
-    //
-    //     // Immediate — no 80ms wait
-    //     XCTAssertEqual(vm.displayResults.first?.id, "cached")
-    //     XCTAssertEqual(vm.queryState, .streaming) // cache hit, not idle
-    // }
+    // Task F3 - Prefix cache test
+    func test_prefixCache_hit_bypasses_debounce() async {
+        let vm = SearchViewModel(backend: MockBackend())
+        vm.prefixCache.store(prefix: "doc", results: [.mock(rank: 1.0, id: "cached")])
+
+        vm.onQueryChange("doc")
+
+        // Immediate — no 80ms wait
+        XCTAssertEqual(vm.displayResults.first?.id, "cached")
+        XCTAssertEqual(vm.queryState, .streaming) // cache hit, not idle
+    }
 }
 
 // MARK: - Mock Extensions

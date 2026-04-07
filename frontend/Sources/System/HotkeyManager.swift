@@ -22,6 +22,11 @@ class HotkeyManager {
         self.windowController = windowController
     }
     
+    // Public setter for wiring from AppDelegate (F5)
+    func setWindowController(_ controller: WindowControllerProtocol) {
+        self.windowController = controller
+    }
+    
     func register() {
         guard !isRegistered else { return }
         

@@ -14,6 +14,13 @@ class SearchViewModel: ObservableObject {
     // Backend channel
     private let backend: SearchBackendProtocol
     
+    // Task references for cancellation (F3)
+    var debounceTask: Task<Void, Never>?
+    var searchTask: Task<Void, Never>?
+    
+    // Prefix cache (F3)
+    let prefixCache = PrefixCache()
+    
     init(backend: SearchBackendProtocol) {
         self.backend = backend
     }
@@ -202,5 +209,24 @@ struct IndexProgress {
 extension Array {
     subscript(safe index: Int) -> Element? {
         indices.contains(index) ? self[index] : nil
+    }
+}
+
+// MARK: - PrefixCache (F3)
+
+@MainActor
+class PrefixCache {
+    private var cache: [String: [SearchResult]] = [:]
+    
+    func store(prefix: String, results: [SearchResult]) {
+        cache[prefix] = results
+    }
+    
+    func lookup(prefix: String) -> [SearchResult]? {
+        return cache[prefix]
+    }
+    
+    func clear() {
+        cache.removeAll()
     }
 }

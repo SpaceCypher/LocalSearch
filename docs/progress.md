@@ -16,11 +16,11 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 13 / 46 (backend) + 3 / 22 (frontend) |
-| Tests written | 47 (backend) + 13 (frontend) = 60 |
-| Tests passing | 60 / 60 |
-| Commits | 16 |
-| Last updated | 2026-04-06 |
+| Tasks complete | 13 / 46 (backend) + 5 / 22 (frontend) |
+| Tests written | 47 (backend) + 20 (frontend) = 67 |
+| Tests passing | 67 / 67 |
+| Commits | 18 |
+| Last updated | 2026-04-07 |
 
 ---
 
@@ -418,8 +418,119 @@
 
 ## In Progress
 
-### 🔄 Task F3 — Debounce + Cancellation Engine
-**Next frontend task** — 80ms trailing-edge debounce with Task cancellation
+None — ready for Task F6 (QueryFieldView)
+
+---
+
+## Completed Tasks (Frontend)
+
+### ✅ Task F3 — Debounce + Cancellation Engine
+**Commit:** `feat(vm): 80ms trailing-edge debounce with task cancellation and prefix cache bypass`
+
+**What was built:**
+- Refactored debounce properties from associated objects to stored properties in `SearchViewModel`
+- `PrefixCache` class — in-memory cache for instant prefix results
+- `debounceTask` property — cancellable Task for 80ms debounce
+- `searchTask` property — cancellable Task for backend search
+- Updated `onQueryChange(_:)` with:
+  - Task cancellation on every keystroke (cancel previous debounce/search)
+  - Prefix cache lookup that bypasses debounce (instant results)
+  - 80ms trailing-edge debounce using `Task.sleep(nanoseconds: 80_000_000)`
+  - Generation check before starting search (prevents stale searches)
+- `startSearch(query:generation:)` private method:
+  - Spawns searchTask with backend AsyncStream
+  - Generation check on every result before applying
+  - State transition to `.complete` when stream finishes
+
+**Tests (11/11 GREEN):**
+| Test | Result |
+|---|---|
+| `test_initialState_isIdle` | ✅ |
+| `test_queryChange_immediatelyDimsStaleResults` | ✅ |
+| `test_generationIncrements_onEachQueryChange` | ✅ |
+| `test_emptyQuery_transitionsToIdle_clearsResults` | ✅ |
+| `test_staleResults_discarded_whenGenerationMismatch` | ✅ |
+| `test_insertResult_maintainsSortOrder` | ✅ |
+| `test_selectionTracksDocument_notPosition` | ✅ |
+| `test_debounce_firesAfter80ms` | ✅ |
+| `test_rapidTyping_firesOnlyOneSearch` | ✅ |
+| `test_newQuery_cancels_previousSearchTask` | ✅ |
+| `test_prefixCache_hit_bypasses_debounce` | ✅ |
+
+**Key design notes:**
+- Trailing-edge debounce: search fires 80ms after last keystroke
+- Task cancellation prevents wasted work from abandoned queries
+- Prefix cache provides instant results for common prefixes (no debounce wait)
+- Generation counter ensures only current query's results are displayed
+- Refactored from associated objects to proper stored properties for cleaner architecture
+
+---
+
+### ✅ Task F5 — Global Hotkey Registration (⌥Space)
+**Commit:** `feat(hotkey): ⌥Space global hotkey with CGEventTap + Carbon fallback`
+
+**What was built:**
+- `HotkeyManager` singleton with dual registration strategy:
+  - Primary: CGEventTap (requires accessibility permission, more reliable)
+  - Fallback: Carbon RegisterEventHotKey (works in sandbox, no permission needed)
+- `WindowControllerProtocol` — protocol for window show/hide operations
+- `register()` — tries CGEventTap first, falls back to Carbon
+- `toggle()` — shows/hides window, positions at cursor on show
+- `setWindowController(_:)` — public setter for wiring from AppDelegate
+- AppDelegate integration — wires HotkeyManager to SearchWindowController
+- SearchWindowController conformance to WindowControllerProtocol
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_hotkeyManager_isSingleton` | ✅ |
+| `test_register_doesNotThrow` | ✅ |
+| `test_toggle_callsShowOrHide` | ✅ |
+
+**Key design notes:**
+- CGEventTap provides better reliability but requires accessibility permission
+- Carbon fallback ensures hotkey works even without permission
+- Window positioning at cursor on show (Spotlight-like behavior)
+- Weak reference to window controller prevents retain cycles
+- Toggle tracks visibility state to alternate between show/hide
+
+---
+
+## In Progress (Previous)
+
+### ✅ Task F3 — Debounce + Cancellation Engine
+**Commit:** `feat(vm): 80ms trailing-edge debounce with task cancellation and prefix cache bypass`
+
+**What was built:**
+- `SearchViewModel+Debounce.swift` extension file with:
+  - `PrefixCache` class — in-memory cache for instant prefix results
+  - `debounceTask` property — cancellable Task for 80ms debounce
+  - `searchTask` property — cancellable Task for backend search
+  - Associated object storage for extension properties
+- Updated `onQueryChange(_:)` with:
+  - Task cancellation on every keystroke (cancel previous debounce/search)
+  - Prefix cache lookup that bypasses debounce (instant results)
+  - 80ms trailing-edge debounce using `Task.sleep(nanoseconds: 80_000_000)`
+  - Generation check before starting search (prevents stale searches)
+- `startSearch(query:generation:)` private method:
+  - Spawns searchTask with backend AsyncStream
+  - Generation check on every result before applying
+  - State transition to `.complete` when stream finishes
+
+**Tests (4/4 GREEN):**
+| Test | Result |
+|---|---|
+| `test_debounce_firesAfter80ms` | ✅ |
+| `test_rapidTyping_firesOnlyOneSearch` | ✅ |
+| `test_newQuery_cancels_previousSearchTask` | ✅ |
+| `test_prefixCache_hit_bypasses_debounce` | ✅ |
+
+**Key design notes:**
+- Trailing-edge debounce: search fires 80ms after last keystroke
+- Task cancellation prevents wasted work from abandoned queries
+- Prefix cache provides instant results for common prefixes (no debounce wait)
+- Generation counter ensures only current query's results are displayed
+- All tests pass including existing F2 tests (10/10 total)
 
 ---
 
@@ -427,9 +538,6 @@
 
 | # | Task | Key implementation |
 |---|---|---|
-| F3 | Debounce + Cancellation Engine | 80ms trailing-edge debounce, Task cancellation, prefix cache bypass |
-| ~~F4~~ | ~~SearchWindow — NSPanel Configuration~~ | ✅ Complete |
-| F5 | Global Hotkey Registration (⌥Space) | CGEventTap, toggle show/hide behavior |
 | F6 | QueryFieldView — Search Input Component | Spinner, clear button, filter chip extraction |
 | F7 | Query Parser — Inline Filter Syntax | 8 filter types, negation, content phrase |
 | F8 | ScopeBarView — Filter Chips | Multi-select OR filter, ⌘1-5 shortcuts, instant client-side filtering |
@@ -478,6 +586,7 @@
 ## Git Log
 
 ```
+fd7f48f  feat(vm): 80ms trailing-edge debounce with task cancellation and prefix cache bypass
 4879c82  feat(window): NSPanel floating, non-activating, all-spaces, escape-to-dismiss
 cb9987b  feat(fs): FSEvents watcher with deduplication and MUST_SCAN_SUBDIRS handling
 5710737  feat(query): BM25 scorer with field boost and intent-weighted ranking

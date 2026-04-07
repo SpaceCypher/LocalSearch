@@ -18,6 +18,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory) // No Dock icon
         windowController = SearchWindowController()
+        
+        // Wire up HotkeyManager to window controller (F5)
+        if let controller = windowController {
+            HotkeyManager.shared.setWindowController(controller)
+        }
+        
         HotkeyManager.shared.register()
     }
 }

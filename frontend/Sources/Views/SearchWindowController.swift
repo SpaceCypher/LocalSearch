@@ -1,7 +1,7 @@
 import Cocoa
 import SwiftUI
 
-class SearchWindowController: NSWindowController {
+class SearchWindowController: NSWindowController, WindowControllerProtocol {
     
     convenience init() {
         // Create the NSPanel
@@ -39,6 +39,11 @@ class SearchWindowController: NSWindowController {
     }
     
     func handleEscapeKey() {
+        window?.orderOut(nil)
+    }
+    
+    // WindowControllerProtocol conformance
+    @objc func hideWindow() {
         window?.orderOut(nil)
     }
 }
