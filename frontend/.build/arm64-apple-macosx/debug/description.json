@@ -302,6 +302,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift"
         },
         {
@@ -342,6 +346,7 @@
       "moduleOutputPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/Modules/LocalSearchTests.swiftmodule",
       "objects" : [
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryParserTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/ResultRowViewTests.swift.o",
@@ -407,6 +412,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.swift.o"
         },
         {
@@ -437,6 +446,7 @@
       "prepareForIndexing" : false,
       "sources" : [
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryParserTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift",
@@ -595,6 +605,7 @@
       "-incremental",
       "-c",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryParserTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/ResultRowViewTests.swift",
@@ -860,6 +871,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.swift.o"
         },
         {
@@ -895,6 +910,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift"
         },
         {
           "kind" : "file",

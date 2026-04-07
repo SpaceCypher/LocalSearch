@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 @MainActor
 class SearchViewModel: ObservableObject {
@@ -57,6 +58,13 @@ class SearchViewModel: ObservableObject {
         }
     }
     
+    // F10: Keyboard navigation
+    @Published var expandedResult: SearchResult? = nil
+    var queryHistory: [String] = []
+    private var historyIndex: Int = -1
+    private var isNavigatingHistory: Bool = false
+    private var isProgrammaticQueryChange: Bool = false
+    
     init(backend: SearchBackendProtocol) {
         self.backend = backend
     }
@@ -64,6 +72,13 @@ class SearchViewModel: ObservableObject {
     // MARK: - Query Lifecycle
     
     func onQueryChange(_ newText: String) {
+        // Reset history navigation if user is typing (not programmatic change)
+        if !isProgrammaticQueryChange {
+            historyIndex = -1
+            isNavigatingHistory = false
+        }
+        isProgrammaticQueryChange = false
+        
         // 1. Cancel any pending debounce or search tasks
         debounceTask?.cancel()
         searchTask?.cancel()
@@ -150,6 +165,71 @@ class SearchViewModel: ObservableObject {
             setActiveScope(.folders)
         default:
             break
+        }
+    }
+    
+    // MARK: - Keyboard Navigation (F10)
+    
+    func handleArrowKey(_ direction: ArrowDirection) {
+        switch direction {
+        case .up:
+            if queryText.isEmpty || isNavigatingHistory {
+                // Navigate query history
+                if !queryHistory.isEmpty {
+                    historyIndex = min(historyIndex + 1, queryHistory.count - 1)
+                    if historyIndex >= 0 && historyIndex < queryHistory.count {
+                        isProgrammaticQueryChange = true
+                        queryText = queryHistory[historyIndex]
+                        isNavigatingHistory = true
+                    }
+                }
+            } else if let current = selectedIndex, current > 0 {
+                selectedIndex = current - 1
+            }
+            
+        case .down:
+            if isNavigatingHistory {
+                // Navigate down in history (towards more recent)
+                historyIndex = max(historyIndex - 1, -1)
+                if historyIndex >= 0 && historyIndex < queryHistory.count {
+                    isProgrammaticQueryChange = true
+                    queryText = queryHistory[historyIndex]
+                } else {
+                    isProgrammaticQueryChange = true
+                    queryText = ""
+                    isNavigatingHistory = false
+                }
+            } else if let current = selectedIndex, current < filteredResults.count - 1 {
+                selectedIndex = current + 1
+            } else if selectedIndex == nil && !filteredResults.isEmpty {
+                selectedIndex = 0
+            }
+            
+        case .left:
+            expandedResult = nil
+            
+        case .right:
+            if let index = selectedIndex, index < filteredResults.count {
+                expandedResult = filteredResults[index]
+            }
+        }
+    }
+    
+    func handleReturnKey(modifiers: EventModifiers) {
+        guard let index = selectedIndex, index < filteredResults.count else { return }
+        let result = filteredResults[index]
+        
+        if modifiers.contains(.command) {
+            // Reveal in Finder
+            NSWorkspace.shared.selectFile(result.path, inFileViewerRootedAtPath: "")
+        } else if modifiers.contains(.option) {
+            // Copy path to clipboard
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(result.path, forType: .string)
+        } else {
+            // Open file
+            NSWorkspace.shared.open(URL(fileURLWithPath: result.path))
         }
     }
     
@@ -296,6 +376,13 @@ struct IndexProgress {
 }
 
 // MARK: - Array Safe Subscript
+
+enum ArrowDirection {
+    case up
+    case down
+    case left
+    case right
+}
 
 extension Array {
     subscript(safe index: Int) -> Element? {
