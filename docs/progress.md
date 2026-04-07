@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 26 / 46 (backend) + 13 / 22 (frontend) |
-| Tests written | 91 (backend) + 60 (frontend) = 151 |
-| Tests passing | 151 / 151 |
-| Commits | 46 |
+| Tasks complete | 27 / 46 (backend) + 13 / 22 (frontend) |
+| Tests written | 94 (backend) + 60 (frontend) = 154 |
+| Tests passing | 154 / 154 |
+| Commits | 48 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -1252,13 +1252,48 @@ None — ready for Task F8 (ScopeBarView)
 
 ---
 
+### ✅ Task 27 — Index Migration + Versioning
+**Commit:** `feat(index): index versioning and 3-tier migration strategy with rollback backup`
+
+**What was built:**
+- `MigrationPlan` enum with 3 migration tiers:
+  - `None` — versions match, no migration needed
+  - `Additive` — newer index with backward-compatible changes
+  - `FullReindex` — breaking changes require full reindex with backup
+- `check_compatibility()` function — determines migration plan based on version comparison
+  - Same version → None
+  - Index newer than reader → Additive (transparent)
+  - Index older than reader → FullReindex (with backup)
+- `execute_migration()` function — executes migration plan with backup logic
+  - Creates `index.v0.backup` directory before reindexing
+  - Renames old index directory to backup location
+  - Creates new index directory for fresh reindex
+  - Provides rollback capability if migration fails
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_migration_none_when_versions_match` | ✅ |
+| `test_migration_additive_is_transparent` | ✅ |
+| `test_migration_breaking_triggers_backup` | ✅ |
+
+**Key design notes:**
+- 3-tier migration strategy balances compatibility with evolution
+- Additive changes (new fields, new features) are transparent to old readers
+- Breaking changes trigger automatic backup before reindex
+- Backup directory naming convention: `index.v{old_version}.backup`
+- Migration is atomic: rename old → create new (no partial state)
+- All 94 backend tests passing (91 existing + 3 new)
+
+---
+
 ## Upcoming (Backend - On Hold) (Frontend)
 
 | # | Task | Key implementation |
 |---|---|---|
 | 21 | Rust ↔ Swift FFI | C ABI: `localsearch_query`, `localsearch_free_results` |
 | 22 | Suffix Array | O(log n) substring search + rebuild-window fallback |
-| 27 | Index Migration + Versioning | 3-tier migration, rollback backup |
+| 28 | Index-Disk Parity Test | `tests/parity.rs` — catches silent index divergence |
 | 28 | Index-Disk Parity Test | `tests/parity.rs` — catches silent index divergence |
 | 29 | Production Checklist | All chaos scenarios as CI gates |
 | 30–46 | Advanced features | N-gram, Phonetic, Prefix Cache, ResultProvider, Thread Registry, Fault Injector, Security/TCC, External Volumes, Spotlight Fallback, Benchmarks, Health Dashboard, Signal DB |
