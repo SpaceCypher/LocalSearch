@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 23 / 46 (backend) + 13 / 22 (frontend) |
-| Tests written | 87 (backend) + 60 (frontend) = 147 |
-| Tests passing | 147 / 147 |
-| Commits | 43 |
+| Tasks complete | 24 / 46 (backend) + 13 / 22 (frontend) |
+| Tests written | 90 (backend) + 60 (frontend) = 150 |
+| Tests passing | 150 / 150 |
+| Commits | 45 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -1186,6 +1186,37 @@ None — ready for Task F8 (ScopeBarView)
 - Hot path priority ensures frequently accessed directories are reconciled first
 - Uses walkdir for efficient recursive filesystem traversal
 - All 87 backend tests passing (84 existing + 3 new)
+
+---
+
+### ✅ Task 25 — Content Extraction
+**Commit:** `feat(extract): sandboxed content extractor with 64KB limit and crash containment`
+
+**What was built:**
+- `ExtractionResult` struct with text and full_content flag
+- `extract_plaintext()` — extracts first 64KB from text files
+  - Uses BufReader for efficient reading
+  - Converts to UTF-8 with lossy conversion for invalid sequences
+  - Sets full_content flag based on whether entire file was read
+- `extract_content()` — dispatcher based on file extension
+  - Handles 15+ text file extensions (txt, md, rs, py, js, ts, json, yaml, toml, xml, html, css, sh)
+  - PDF extraction stub (returns empty gracefully)
+  - Unknown file types return empty result without panicking
+- 64KB extraction limit prevents memory issues with large files
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_extract_plaintext_first_64kb` | ✅ |
+| `test_extract_unknown_returns_empty` | ✅ |
+| `test_extractor_crash_does_not_panic_main_process` | ✅ |
+
+**Key design notes:**
+- 64KB limit prevents memory exhaustion on large files
+- Graceful handling of unknown file types (returns empty, no panic)
+- UTF-8 lossy conversion handles binary data in text files
+- Extension-based dispatcher allows easy addition of new extractors
+- All 90 backend tests passing (87 existing + 3 new)
 
 ---
 
