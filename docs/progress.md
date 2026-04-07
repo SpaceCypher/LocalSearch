@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 21 / 46 (backend) + 12 / 22 (frontend) |
-| Tests written | 81 (backend) + 54 (frontend) = 135 |
-| Tests passing | 135 / 135 |
-| Commits | 39 |
+| Tasks complete | 22 / 46 (backend) + 12 / 22 (frontend) |
+| Tests written | 84 (backend) + 54 (frontend) = 138 |
+| Tests passing | 138 / 138 |
+| Commits | 40 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -1101,14 +1101,39 @@ None — ready for Task F8 (ScopeBarView)
 
 ---
 
+### ✅ Task 23 — FSEvents Edge Cases
+**Commit:** `feat(fs): rename pair detection, symlink policy, permission change handling`
+
+**What was built:**
+- Added 3 edge case tests to `src/fs/events.rs`:
+  - `test_rename_updates_path_keeps_doc_id` — verifies rename detection (Deleted + Created pair)
+  - `test_symlink_not_followed` — verifies symlink policy (detect without following)
+  - `test_permission_denied_handled_gracefully` — verifies EACCES handling (chmod 000)
+- Rename detection: expects Deleted(old) + Created(new) event pair
+- Symlink policy: uses `symlink_metadata()` to detect symlinks without following
+- Permission handling: verifies `PermissionDenied` error without crashing
+
+**Tests (3/3 GREEN):**
+| Test | Result |
+|---|---|
+| `test_rename_updates_path_keeps_doc_id` | ✅ |
+| `test_symlink_not_followed` | ✅ |
+| `test_permission_denied_handled_gracefully` | ✅ |
+
+**Key design notes:**
+- Rename detection relies on FSEvents reporting both delete and create events
+- Symlink detection uses `symlink_metadata()` to avoid following the link
+- Permission errors are handled gracefully without panicking
+- All 84 backend tests passing (81 existing + 3 new)
+
+---
+
 ## Upcoming (Backend - On Hold) (Frontend)
 
 | # | Task | Key implementation |
 |---|---|---|
-| 20 | Chaos Tests | WAL corruption, FSEvents storm, disk full, EACCES |
 | 21 | Rust ↔ Swift FFI | C ABI: `localsearch_query`, `localsearch_free_results` |
 | 22 | Suffix Array | O(log n) substring search + rebuild-window fallback |
-| 23 | FSEvents Edge Cases | Rename pair detection, symlink policy, EACCES handling |
 | 24 | Reconciliation Worker | Snapshot-diff, priority queue for hot paths |
 | 25 | Content Extraction XPC | Sandboxed extractor, crash containment, 64KB extraction |
 | 26 | Power Monitor + I/O Throttling | Thermal/battery-aware compaction, `setiopolicy_np` |
