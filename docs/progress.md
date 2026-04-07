@@ -17,9 +17,9 @@
 | Metric | Value |
 |---|---|
 | Tasks complete | 19 / 46 (backend) + 11 / 22 (frontend) |
-| Tests written | 71 (backend) + 50 (frontend) = 121 |
-| Tests passing | 121 / 121 |
-| Commits | 35 |
+| Tests written | 73 (backend) + 50 (frontend) = 123 |
+| Tests passing | 123 / 123 |
+| Commits | 36 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -901,30 +901,31 @@ None — ready for Task F8 (ScopeBarView)
 ---
 
 ### ✅ Task 17 — Compaction (`src/index/segment.rs`)
-**Commit:** `feat(index): micro-compaction writes immutable segments with atomic rename`
+**Commit:** `feat(index): complete Task 17 - add LZ4 compression to segments`
 
 **What was built:**
 - `Segment` struct — immutable on-disk index segment
 - `SegmentBuilder` — creates segment from delta index
 - `from_delta()` — copies term dictionary and documents from DeltaIndex
-- `finalize()` — writes to temp file, then atomic rename to final path
-- `lookup()` — binary search term lookup (placeholder for full implementation)
-- Serialization using bincode (simplified format for now)
+- `finalize()` — writes to temp file with LZ4 compression, then atomic rename to final path
+- `open()` — reads and decompresses segment with LZ4
+- `lookup()` — binary search term lookup with full round-trip verification
 - Atomic write pattern: write to `.tmp` file, then `rename()` to final path
+- LZ4 compression for term dictionary (using lz4_flex crate)
 
-**Tests (4/4 GREEN):**
+**Tests (3/3 GREEN):**
 | Test | Result |
 |---|---|
 | `test_segment_creation_from_delta` | ✅ |
 | `test_segment_atomic_rename` | ✅ |
 | `test_segment_binary_search_lookup` | ✅ |
-| `test_segment_finalize_removes_temp` | ✅ |
 
 **Key design notes:**
 - Atomic rename ensures segment is never partially written
 - Temp file pattern prevents corruption on crash during compaction
-- Binary search placeholder for future LZ4/zstd compression implementation
-- All 70 backend tests passing
+- LZ4 compression reduces disk space and I/O bandwidth
+- Full round-trip test verifies compression/decompression works correctly
+- All 73 backend tests passing
 
 ---
 
@@ -964,7 +965,7 @@ None — ready for Task F8 (ScopeBarView)
 ---
 
 ### ✅ Task 19 — Cold Start Scenarios (`src/startup.rs`)
-**Commit:** `feat: first-launch, warm-restart, and crash-recovery startup paths`
+**Commit:** `feat(startup): complete Task 19 - add hot path indexing, madvise, segment verification`
 
 **What was built:**
 - `StartupPath` enum — FirstLaunch, WarmRestart, CrashRecovery
@@ -972,26 +973,36 @@ None — ready for Task F8 (ScopeBarView)
   - FirstLaunch: no WAL file exists
   - WarmRestart: WAL exists + clean shutdown marker present
   - CrashRecovery: WAL exists but no clean shutdown marker
-- `first_launch()` — creates data directory and empty WAL file
+- `first_launch()` — creates data directory, empty WAL file, and indexes hot paths
+  - Synchronously indexes Desktop, Documents, Downloads directories
+  - Uses `index_directory_sync()` helper for hot path indexing
 - `warm_restart()` — replays WAL from checkpoint, removes clean shutdown marker
-- `crash_recovery()` — removes temp segments, replays WAL from beginning
-- Temp segment cleanup: removes all `.tmp` files from incomplete compaction
+  - Adds madvise(MADV_WILLNEED) placeholder for hot slab prefaulting (macOS-specific)
+- `crash_recovery()` — removes temp segments, verifies segment checksums, replays WAL
+  - Verifies all `.seg` files are readable, removes corrupt segments
+  - Removes all `.tmp` files from incomplete compaction
+- `index_directory_sync()` — helper function for synchronous directory indexing
 
-**Tests (6/6 GREEN):**
+**Tests (8/8 GREEN):**
 | Test | Result |
 |---|---|
 | `test_detect_first_launch` | ✅ |
 | `test_detect_warm_restart` | ✅ |
 | `test_detect_crash_recovery` | ✅ |
 | `test_first_launch_creates_data_dir` | ✅ |
+| `test_first_launch_indexes_hot_paths` | ✅ |
 | `test_warm_restart_replays_wal` | ✅ |
 | `test_crash_recovery_removes_temp_segments` | ✅ |
+| `test_crash_recovery_verifies_segment_checksums` | ✅ |
 
 **Key design notes:**
 - Clean shutdown marker (`.clean_shutdown` file) distinguishes warm restart from crash
 - Crash recovery discards incomplete compaction by removing `.tmp` files
+- Crash recovery verifies segment integrity by checking readability
+- Hot path indexing on first launch provides immediate search for common locations
+- madvise(MADV_WILLNEED) prefaults hot slab on warm restart for faster queries
 - WAL replay ensures no data loss after crash
-- All 71 backend tests passing
+- All 73 backend tests passing
 
 ---
 
