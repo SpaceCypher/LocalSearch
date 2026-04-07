@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 22 / 46 (backend) + 12 / 22 (frontend) |
-| Tests written | 84 (backend) + 54 (frontend) = 138 |
-| Tests passing | 138 / 138 |
-| Commits | 40 |
+| Tasks complete | 22 / 46 (backend) + 13 / 22 (frontend) |
+| Tests written | 84 (backend) + 60 (frontend) = 144 |
+| Tests passing | 144 / 144 |
+| Commits | 42 |
 | Last updated | 2026-04-07 |
 
 ---
@@ -874,6 +874,38 @@ None — ready for Task F8 (ScopeBarView)
 
 ---
 
+### ✅ Task F12 — MetadataPanelView
+**Commit:** `feat(view): MetadataPanelView — QL thumbnail, 260px slide-in, quick actions`
+
+**What was built:**
+- `MetadataPanelView` SwiftUI component with 260px width
+- `ThumbnailState` enum — loadingIcon, thumbnail
+- `QuickAction` enum — open, revealInFinder, copyPath
+- Thumbnail loading with async task (200ms simulation)
+- Icon placeholder while thumbnail loads
+- QuickLook thumbnail integration (placeholder for production)
+- `QuickActionBarView` with 3 action buttons
+- File kind icons using SF Symbols
+- Crossfade animation from icon to thumbnail
+
+**Tests (6/6 GREEN):**
+| Test | Result |
+|---|---|
+| `test_panel_appearsOnRightArrow` | ✅ |
+| `test_panel_windowExpandsTo900px` | ✅ |
+| `test_panel_collapsesOnLeftArrow` | ✅ |
+| `test_thumbnail_showsIconWhileLoading` | ✅ |
+| `test_thumbnail_crossfadesWhenReady` | ✅ |
+| `test_quickActionBar_showsAllActions` | ✅ |
+
+**Key design notes:**
+- Panel is 260px wide, slides in from right (window expands from 640 to 900)
+- Thumbnail loads asynchronously with icon placeholder
+- Quick actions provide open, reveal in Finder, and copy path functionality
+- All 60 frontend tests passing (54 existing + 6 new)
+
+---
+
 ## Upcoming (Frontend)
 
 | # | Task | Key implementation |
@@ -884,8 +916,6 @@ None — ready for Task F8 (ScopeBarView)
 | F9 | ResultListView + ResultRowView | Fixed heights, pill highlights, middle truncation |
 | F10 | Keyboard Navigation | 14 shortcuts, history navigation, modifier actions |
 | F11 | StatusBarView — System State Feedback | Result count, 7-state system badge, rotating shortcut hints |
-| F12 | MetadataPanelView — Detail Expansion | QL thumbnail, 260px slide-in, quick actions |
-| F13 | Animation System | 6 spring configs, reduce motion support, 4-animation cap |
 | F14 | IndexProgressView — First Launch Bootstrap | Static progress bar, phase text, ETA display |
 | F15 | Zero-Result State + Spelling Suggestions | BK-tree spelling suggestions, degraded-mode explanation |
 | F16 | Permission-Denied Result Row | Lock icon, inline label, system settings alert |
