@@ -4,3 +4,6 @@ pub mod reader;
 
 #[cfg(test)]
 mod ingestion_test;
+
+#[cfg(test)]
+mod chaos_test;

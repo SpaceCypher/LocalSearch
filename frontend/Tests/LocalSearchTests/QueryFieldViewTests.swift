@@ -11,7 +11,8 @@ class QueryFieldViewTests: XCTestCase {
         // Spinner not shown before debounce
         XCTAssertFalse(vm.showSpinner)
         
-        try await Task.sleep(nanoseconds: 80_000_000)
+        // Wait for debounce (80ms) + small buffer for task execution
+        try await Task.sleep(nanoseconds: 90_000_000)
         XCTAssertTrue(vm.showSpinner)
     }
     

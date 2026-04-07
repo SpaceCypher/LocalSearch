@@ -40,6 +40,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/AnimationTokens.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift"
         },
         {
@@ -82,6 +86,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/LocalSearchApp.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/QueryParser.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/AnimationTokens.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o",
@@ -108,7 +113,6 @@
         "-entry-point-function-name",
         "-Xfrontend",
         "LocalSearch_main",
-        "-color-diagnostics",
         "-swift-version",
         "5",
         "-sdk",
@@ -157,6 +161,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/AnimationTokens.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o"
         },
         {
@@ -193,6 +201,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Query/QueryParser.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/AnimationTokens.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
@@ -252,7 +261,6 @@
         "-emit-objc-header",
         "-emit-objc-header-path",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchPackageTests.build/LocalSearchPackageTests-Swift.h",
-        "-color-diagnostics",
         "-sdk",
         "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk",
         "-F",
@@ -308,6 +316,10 @@
       "inputs" : [
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/AnimationTests.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift"
         },
         {
@@ -359,6 +371,7 @@
       "moduleName" : "LocalSearchTests",
       "moduleOutputPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/Modules/LocalSearchTests.swiftmodule",
       "objects" : [
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/AnimationTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/KeyboardNavigationTests.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/QueryFieldViewTests.swift.o",
@@ -386,7 +399,6 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/ModuleCache",
         "-parseable-output",
         "-parse-as-library",
-        "-color-diagnostics",
         "-swift-version",
         "5",
         "-sdk",
@@ -421,6 +433,10 @@
       ],
       "outputFileMapPath" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/output-file-map.json",
       "outputs" : [
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/AnimationTests.swift.o"
+        },
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/HotkeyManagerTests.swift.o"
@@ -464,6 +480,7 @@
       ],
       "prepareForIndexing" : false,
       "sources" : [
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/AnimationTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
@@ -493,6 +510,7 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/App/LocalSearchApp.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Backend/MockBackend.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Query/QueryParser.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/AnimationTokens.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
@@ -519,7 +537,6 @@
       "-entry-point-function-name",
       "-Xfrontend",
       "LocalSearch_main",
-      "-color-diagnostics",
       "-swift-version",
       "5",
       "-sdk",
@@ -584,7 +601,6 @@
       "-emit-objc-header",
       "-emit-objc-header-path",
       "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchPackageTests.build/LocalSearchPackageTests-Swift.h",
-      "-color-diagnostics",
       "-sdk",
       "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk",
       "-F",
@@ -625,6 +641,7 @@
       "frontend",
       "-incremental",
       "-c",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/AnimationTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/HotkeyManagerTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/KeyboardNavigationTests.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/QueryFieldViewTests.swift",
@@ -652,7 +669,6 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/ModuleCache",
       "-parseable-output",
       "-parse-as-library",
-      "-color-diagnostics",
       "-swift-version",
       "5",
       "-sdk",
@@ -755,6 +771,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/AnimationTokens.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/System/HotkeyManager.swift"
         },
         {
@@ -790,6 +810,10 @@
         {
           "kind" : "virtual",
           "name" : "<link-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/AnimationTokens.swift.o"
         },
         {
           "kind" : "file",
@@ -857,6 +881,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/AnimationTokens.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/HotkeyManager.swift.o"
         },
         {
@@ -898,6 +926,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchPackageTests.build/runner.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchTests.build/AnimationTests.swift.o"
         },
         {
           "kind" : "file",
@@ -944,6 +976,10 @@
         {
           "kind" : "virtual",
           "name" : "<sources-file-list>"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Tests/LocalSearchTests/AnimationTests.swift"
         },
         {
           "kind" : "file",
