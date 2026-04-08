@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 30 / 46 (backend) + 17 / 22 (frontend) |
+| Tasks complete | 30 / 46 (backend) + 18 / 22 (frontend) |
 | Tests written | 101 (backend) + 78 (frontend) = 179 |
 | Tests passing | 179 / 179 |
-| Commits | 59 |
+| Commits | 60 |
 | Last updated | 2026-04-08 |
 
 ---
@@ -587,6 +587,40 @@ None — ready for Task F8 (ScopeBarView)
 - Filter parsing happens synchronously on every query change
 - Parsed filters are passed to backend for server-side filtering
 - Test helpers centralized to avoid duplication across test files
+
+---
+
+### ✅ Task F6 — QueryFieldView UI Component (COMPLETE)
+**Commit:** `feat(view): QueryFieldView UI component + complete SearchContentView assembly`
+
+**What was built:**
+- Created `QueryFieldView.swift` SwiftUI component with:
+  - Search icon (magnifyingglass) on left
+  - TextField with plain style and auto-focus
+  - Spinner with reserved space (12x12pt) to prevent layout shift
+  - Clear button (xmark.circle.fill) when query is non-empty
+  - Accessibility labels and hints for VoiceOver
+  - 8pt vertical padding, 12pt horizontal padding
+  - Rounded corners (6pt radius)
+- Assembled complete `SearchContentView` replacing placeholder:
+  - QueryFieldView at top
+  - ScopeBarView for filters
+  - IndexProgressView (conditional, shown during bootstrap)
+  - ResultListView or ZeroResultsView (conditional based on results)
+  - StatusBarView at bottom
+- Fixed ZeroResultsView integration with proper initializer parameters
+- App now has complete working UI ready to launch
+
+**Tests (78/78 GREEN):**
+All existing tests continue to pass with new UI assembly.
+
+**Key design notes:**
+- Reserved space for spinner prevents layout shift when it appears/disappears
+- Auto-focus on appear ensures immediate typing without clicking
+- Clear button provides quick way to reset search
+- Complete UI assembly means app is now visually functional
+- All components properly wired through SearchViewModel
+- Ready for user testing with MockBackend
 
 ### ✅ Task F7 — Query Parser (Inline Filter Syntax)
 **Commit:** `feat(query): inline filter parser — 8 filter types, negation, content phrase`
