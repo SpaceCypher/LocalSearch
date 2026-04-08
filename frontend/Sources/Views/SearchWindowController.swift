@@ -48,16 +48,53 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
     }
 }
 
-// Placeholder content view
+// Main content view assembling all components
 struct SearchContentView: View {
     @ObservedObject var viewModel: SearchViewModel
     
     var body: some View {
-        VStack {
-            Text("LocalSearch")
-                .font(.title)
-            Text("Search window placeholder")
-                .foregroundColor(.secondary)
+        VStack(spacing: 0) {
+            // Query field at top
+            QueryFieldView(viewModel: viewModel)
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+            
+            // Scope bar (filters)
+            ScopeBarView(viewModel: viewModel)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+            
+            // Index progress (shown during first-launch bootstrap)
+            if viewModel.showIndexProgress, let progress = viewModel.indexProgress {
+                IndexProgressView(progress: progress)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+            
+            // Results or zero-results view
+            if viewModel.displayResults.isEmpty && viewModel.queryState == .complete {
+                // Zero results state
+                ZeroResultsView(
+                    query: viewModel.zeroResultsQuery,
+                    suggestions: viewModel.spellingSuggestions,
+                    showBroadeningTip: viewModel.showBroadeningTip,
+                    note: viewModel.zeroResultsNote,
+                    onSelectSuggestion: { suggestion in
+                        viewModel.selectSuggestion(suggestion)
+                    }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                // Results list
+                ResultListView(viewModel: viewModel)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            
+            // Status bar at bottom
+            StatusBarView(viewModel: viewModel)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(NSColor.windowBackgroundColor))

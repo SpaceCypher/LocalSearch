@@ -60,6 +60,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/QueryFieldView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift"
         },
         {
@@ -103,6 +107,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/SearchViewModel.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/IndexProgressView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MetadataPanelView.swift.o",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/QueryFieldView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultRowView.swift.o",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ScopeBarView.swift.o",
@@ -128,6 +133,7 @@
         "-entry-point-function-name",
         "-Xfrontend",
         "LocalSearch_main",
+        "-color-diagnostics",
         "-swift-version",
         "5",
         "-sdk",
@@ -196,6 +202,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/QueryFieldView.swift.o"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/ResultListView.swift.o"
         },
         {
@@ -233,6 +243,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/IndexProgressView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift",
+        "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/QueryFieldView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift",
         "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ScopeBarView.swift",
@@ -291,6 +302,7 @@
         "-emit-objc-header",
         "-emit-objc-header-path",
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchPackageTests.build/LocalSearchPackageTests-Swift.h",
+        "-color-diagnostics",
         "-sdk",
         "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk",
         "-F",
@@ -449,6 +461,7 @@
         "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/ModuleCache",
         "-parseable-output",
         "-parse-as-library",
+        "-color-diagnostics",
         "-swift-version",
         "5",
         "-sdk",
@@ -585,6 +598,7 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/ViewModel/SearchViewModel.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/IndexProgressView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/MetadataPanelView.swift",
+      "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/QueryFieldView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultRowView.swift",
       "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ScopeBarView.swift",
@@ -610,6 +624,7 @@
       "-entry-point-function-name",
       "-Xfrontend",
       "LocalSearch_main",
+      "-color-diagnostics",
       "-swift-version",
       "5",
       "-sdk",
@@ -674,6 +689,7 @@
       "-emit-objc-header",
       "-emit-objc-header-path",
       "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearchPackageTests.build/LocalSearchPackageTests-Swift.h",
+      "-color-diagnostics",
       "-sdk",
       "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX15.5.sdk",
       "-F",
@@ -746,6 +762,7 @@
       "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/ModuleCache",
       "-parseable-output",
       "-parse-as-library",
+      "-color-diagnostics",
       "-swift-version",
       "5",
       "-sdk",
@@ -868,6 +885,10 @@
         },
         {
           "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/QueryFieldView.swift"
+        },
+        {
+          "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/Sources/Views/ResultListView.swift"
         },
         {
@@ -923,6 +944,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/QueryFieldView.swift.o"
         },
         {
           "kind" : "file",
@@ -1003,6 +1028,10 @@
         {
           "kind" : "file",
           "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/MockBackend.swift.o"
+        },
+        {
+          "kind" : "file",
+          "name" : "/Users/sanidhyakumar/Documents/findohh/frontend/.build/arm64-apple-macosx/debug/LocalSearch.build/QueryFieldView.swift.o"
         },
         {
           "kind" : "file",
