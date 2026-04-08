@@ -33,6 +33,7 @@ struct ResultRowView: View {
         .frame(height: 56)
         .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
         .opacity(Double(result.opacity))
+        .accessibilityLabel(accessibilityLabel)
     }
     
     var iconName: String {
@@ -61,6 +62,18 @@ struct ResultRowView: View {
             return "Permission denied"
         }
         return displayPath
+    }
+    
+    var accessibilityLabel: String {
+        let fileType = result.fileKind == .document ? "document" :
+                      result.fileKind == .image ? "image" :
+                      result.fileKind == .code ? "code file" : "folder"
+        
+        if result.permissionState == .revoked {
+            return "\(result.filename), \(fileType), Permission denied"
+        }
+        
+        return "\(result.filename), \(fileType), \(displayPath)"
     }
     
     var displayFilename: String {

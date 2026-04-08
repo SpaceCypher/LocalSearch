@@ -91,6 +91,21 @@ class SearchViewModel: ObservableObject {
     // F16: Alerter for permission-denied dialogs
     var alerter: AlerterProtocol?
     
+    // F17: Accessibility
+    var isReduceMotionEnabled: Bool = false
+    
+    var searchFieldAccessibilityLabel: String {
+        "Search files"
+    }
+    
+    var searchFieldAccessibilityHint: String {
+        "Type to search your files"
+    }
+    
+    var statusBarIsLiveRegion: Bool {
+        true
+    }
+    
     // F14: Index progress
     @Published var indexProgress: IndexProgress? = nil
     
