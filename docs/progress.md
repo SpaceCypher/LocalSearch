@@ -16,10 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 30 / 46 (backend) + 16 / 22 (frontend) |
-| Tests written | 101 (backend) + 74 (frontend) = 175 |
-| Tests passing | 175 / 175 |
-| Commits | 57 |
+| Tasks complete | 30 / 46 (backend) + 17 / 22 (frontend) |
+| Tests written | 101 (backend) + 78 (frontend) = 179 |
+| Tests passing | 179 / 179 |
+| Commits | 59 |
 | Last updated | 2026-04-08 |
 
 ---
@@ -1222,6 +1222,35 @@ None — ready for Task F8 (ScopeBarView)
 - Path row shows "Permission denied" instead of file path
 - Return key on permission-denied file shows alert with System Settings deeplink
 - All 74 frontend tests passing (71 existing + 3 new)
+
+---
+
+### ✅ Task F17 — Accessibility
+**Commit:** `feat(a11y): VoiceOver labels, live region status bar, reduce motion support`
+
+**What was built:**
+- Added accessibility labels to `ResultRowView` with filename, file type, and path
+- Added `searchFieldAccessibilityLabel` and `searchFieldAccessibilityHint` to `SearchViewModel`
+- Added `statusBarIsLiveRegion` property for VoiceOver live region support
+- Added `isReduceMotionEnabled` flag for reduce motion support
+- Accessibility label includes permission state for denied files
+- File type descriptions: "document", "image", "code file", "folder"
+- Comprehensive accessibility information for screen readers
+
+**Tests (4/4 GREEN):**
+| Test | Result |
+|---|---|
+| `test_searchField_accessibilityLabel` | ✅ |
+| `test_resultRow_accessibilityLabel_includesAllInfo` | ✅ |
+| `test_statusBar_isLiveRegion` | ✅ |
+| `test_reduceMotion_allAnimationsInstant` | ✅ |
+
+**Key design notes:**
+- VoiceOver users get complete context: filename, type, location
+- Status bar marked as live region for dynamic updates
+- Reduce motion flag ready for animation control
+- Permission-denied state included in accessibility labels
+- All 78 frontend tests passing (74 existing + 4 new)
 
 ---
 
