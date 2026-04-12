@@ -15,7 +15,7 @@ class SettingsWindowController: NSWindowController {
         window.center()
         window.title = "Settings"
         window.titlebarAppearsTransparent = true
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         
         let hostingView = NSHostingView(rootView: SettingsView())
         window.contentView = hostingView

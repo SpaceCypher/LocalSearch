@@ -1,151 +1,238 @@
 import SwiftUI
 
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case appearance = "Appearance"
+    case behaviour = "Behaviour"
+    case shortcuts = "Shortcuts"
+    case about = "About"
+    var id: String { self.rawValue }
+}
+
 struct SettingsView: View {
     @ObservedObject var settings = SettingsManager.shared
+    @State private var activeTab: SettingsTab = .appearance
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Header
-            HStack {
-                Text("Styles & Aesthetics")
-                    .font(.title2)
-                    .bold()
-                Spacer()
-            }
-            .padding(.top, 32)
-            .padding(.horizontal, 32)
-            .padding(.bottom, 16)
+        ZStack {
+            // Deep Dark Base Layer
+            Color.black.opacity(0.85)
+                .ignoresSafeArea()
             
-            // Scrollable Content
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    Form {
-                        // Glass Intensity
-                        VStack(alignment: .leading, spacing: 10) {
-                            HStack {
-                                Text("Glass Intensity")
-                                Spacer()
-                                Text("\(Int(settings.glassIntensity * 100))%")
-                                    .foregroundColor(.secondary)
-                                    .font(.system(.body, design: .monospaced))
+            // Background Vibrancy
+            VisualEffectView(material: .hudWindow, blendingMode: NSVisualEffectView.BlendingMode.behindWindow)
+                .ignoresSafeArea()
+                .opacity(0.9) // Slightly mute the vibrancy effect to maintain darkness
+            
+            // Gloss Sheen
+            LinearGradient(
+                stops: [
+                    .init(color: Color.white.opacity(0.07), location: 0),
+                    .init(color: .clear, location: 0.6)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+            
+            VStack(spacing: 0) {
+                Spacer().frame(height: 28) // Space for native title bar
+                // Tab Bar
+                HStack(spacing: 0) {
+                    ForEach(SettingsTab.allCases) { tab in
+                        Button {
+                            withAnimation(.spring(response: 0.2)) {
+                                activeTab = tab
                             }
-                            Slider(value: $settings.glassIntensity, in: 0.1...1.0)
-                                .tint(settings.accentColor.color)
-                            Text("Adjust how 'thick' or transparent the blur background appears.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                        } label: {
+                            VStack(spacing: 0) {
+                                Text(tab.rawValue)
+                                    .font(.system(size: 12))
+                                    .foregroundColor(activeTab == tab ? MacOSDesign.textPrimary : MacOSDesign.textSecondary)
+                                    .padding(.vertical, 8)
+                                    .padding(.horizontal, 12)
+                                
+                                // Active indicator line
+                                Rectangle()
+                                    .fill(activeTab == tab ? settings.accentColor.color : Color.clear)
+                                    .frame(height: 1.5)
+                            }
+                            .frame(maxWidth: .infinity)
                         }
-                        .padding(.vertical, 4)
-                        
-                        Divider()
-                        
-                        // Result Density
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Result Density")
-                            Picker("Result Density", selection: $settings.resultDensity) {
-                                ForEach(ResultDensity.allCases) { density in
-                                    Text(density.rawValue).tag(density)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            Text(settings.resultDensity == .comfortable ? "Comfortable view with large icons and more space." : "Compact view to see more results at once.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                        
-                        Divider()
-                        
-                        // Accent Color
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("Accent Color")
-                            Picker("Accent Color", selection: $settings.accentColor) {
-                                ForEach(AccentColor.allCases) { color in
-                                    Text(color.rawValue).tag(color)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            
-                            if settings.accentColor == .custom {
-                                ColorPicker("Custom Accent", selection: $settings.customColor, supportsOpacity: false)
-                                    .padding(.top, 4)
-                            }
-                            
-                            Text("Select the primary color used for highlights and buttons.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
-                        
-                        Divider()
-                        
-                        // App Presence
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text("App Presence")
-                            Picker("App Presence", selection: $settings.displayMode) {
-                                ForEach(AppDisplayMode.allCases) { mode in
-                                    Text(mode.rawValue).tag(mode)
-                                }
-                            }
-                            .pickerStyle(.segmented)
-                            
-                            Text(settings.displayMode == .menuBar ? "App hides from the Dock and stays only in your Menu Bar." : settings.displayMode == .dock ? "App stays in the Dock like a standard application." : "App appears in both the Dock and Menu Bar for easy access.")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.vertical, 4)
+                        .buttonStyle(.plain)
                     }
-                    .formStyle(.grouped)
                 }
-                .padding(.horizontal, 32)
-                .padding(.bottom, 24)
-            }
-            
-            Divider()
-            
-            // Fixed Bottom Bar
-            HStack {
-                Text("Settings are saved automatically")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
+                .overlay(
+                    Rectangle()
+                        .fill(MacOSDesign.separator)
+                        .frame(height: 0.5),
+                    alignment: .bottom
+                )
                 
-                Spacer()
-                
-                Button("Done") {
-                    // Close the current window (Settings)
-                    NSApp.keyWindow?.close()
+                // Content
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        switch activeTab {
+                        case .appearance:
+                            appearancePanel
+                        case .behaviour:
+                            behaviourPanel
+                        case .shortcuts:
+                            shortcutsPanel
+                        case .about:
+                            aboutPanel
+                        }
+                    }
+                    .padding(.top, 4)
+                    .padding(.bottom, 24)
                 }
-                .keyboardShortcut(.defaultAction)
-                .controlSize(.large)
+                .frame(maxHeight: .infinity)
+                
+                // Footer
+                VStack(spacing: 0) {
+                    Rectangle()
+                        .fill(MacOSDesign.separator)
+                        .frame(height: 0.5)
+                    
+                    HStack {
+                        Text("Changes saved automatically")
+                            .font(.system(size: 11))
+                            .foregroundColor(MacOSDesign.textTertiary)
+                        
+                        Spacer()
+                        
+                        Button {
+                            NSApp.keyWindow?.close()
+                        } label: {
+                            Text("Done")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 6)
+                                .background(settings.accentColor.color.opacity(0.85))
+                                .cornerRadius(7)
+                        }
+                        .buttonStyle(.plain)
+                        .onHover { inside in
+                            // Simple hover effect
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.vertical, 12)
+                    .background(Color.black.opacity(0.12))
+                }
             }
-            .padding(.horizontal, 32)
-            .padding(.vertical, 16)
-            .background(Color(NSColor.windowBackgroundColor))
         }
         .frame(width: 440, height: 600)
-        .background(VisualEffectView(material: .menu, blendingMode: .behindWindow).ignoresSafeArea())
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(MacOSDesign.glassBorder, lineWidth: 0.5)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
         .onChange(of: settings.displayMode) { _, _ in
-            // Immediately trigger a refresh of the Dock/Menu Bar state
             AppDelegate.shared.updateDisplayMode()
         }
     }
-}
-
-// Reuse the native blur helper if needed, or define a simple one for settings
-struct VisualEffectView: NSViewRepresentable {
-    let material: NSVisualEffectView.Material
-    let blendingMode: NSVisualEffectView.BlendingMode
     
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = material
-        view.blendingMode = blendingMode
-        view.state = .active
-        return view
+    // MARK: - Panels
+    
+    private var appearancePanel: some View {
+        Group {
+            MacOSSectionHeader(title: "Glass & Background")
+            MacOSSection {
+                MacOSRow(label: "Glass intensity", hint: "Blur thickness of background surfaces") {
+                    MacOSSlider(value: $settings.glassIntensity, range: 0.1...1.0)
+                }
+                MacOSRow(label: "Tint opacity", hint: "Colour overlay strength", isLast: true) {
+                    MacOSSlider(value: $settings.tintOpacity, range: 0.0...1.0)
+                }
+            }
+            
+            MacOSSectionHeader(title: "Accent Colour")
+            MacOSSection {
+                MacOSRow(label: "Preset") {
+                    MacOSColorPicker(selection: $settings.accentColor, customColor: $settings.customColor)
+                }
+                if settings.accentColor == .custom {
+                    MacOSRow(label: "Custom colour", isLast: true) {
+                        ColorPicker("", selection: $settings.customColor, supportsOpacity: false)
+                            .labelsHidden()
+                            .scaleEffect(0.8)
+                    }
+                }
+            }
+            
+            MacOSSectionHeader(title: "Layout")
+            MacOSSection {
+                MacOSRow(label: "Result density", hint: "Space between items in list view") {
+                    MacOSSegmentedControl(selection: $settings.resultDensity, options: ResultDensity.allCases)
+                }
+                MacOSRow(label: "Show labels", hint: "Text labels below toolbar icons", isLast: true) {
+                    MacOSToggle(isOn: $settings.showLabels)
+                }
+            }
+        }
     }
     
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {
-        nsView.material = material
-        nsView.blendingMode = blendingMode
+    private var behaviourPanel: some View {
+        Group {
+            MacOSSectionHeader(title: "App Presence")
+            MacOSSection {
+                MacOSRow(label: "Show app in", hint: "Where the app icon appears") {
+                    MacOSSegmentedControl(selection: $settings.displayMode, options: AppDisplayMode.allCases)
+                }
+                MacOSRow(label: "Launch at login", hint: "Start automatically on boot", isLast: true) {
+                    MacOSToggle(isOn: $settings.launchAtLogin)
+                }
+            }
+        }
+    }
+    
+    private var shortcutsPanel: some View {
+        Group {
+            MacOSSectionHeader(title: "Shortcuts")
+            MacOSSection {
+                MacOSRow(label: "Global Toggle", hint: "⌥ Space", isLast: true) {
+                    Text("Record...")
+                        .font(.system(size: 11))
+                        .foregroundColor(MacOSDesign.textSecondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.white.opacity(0.1))
+                        .cornerRadius(4)
+                }
+            }
+        }
+    }
+    
+    private var aboutPanel: some View {
+        VStack(spacing: 16) {
+            Spacer().frame(height: 40)
+            
+            if let icon = NSApp.applicationIconImage {
+                Image(nsImage: icon)
+                    .resizable()
+                    .frame(width: 80, height: 80)
+            } else {
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(settings.accentColor.color)
+                    .frame(width: 80, height: 80)
+            }
+            
+            VStack(spacing: 4) {
+                Text("LocalSearch")
+                    .font(.system(size: 18, weight: .bold))
+                Text("Version 1.0 (Build 1)")
+                    .font(.system(size: 12))
+                    .foregroundColor(MacOSDesign.textSecondary)
+            }
+            
+            Text("© 2026 findohh. All rights reserved.")
+                .font(.system(size: 11))
+                .foregroundColor(MacOSDesign.textTertiary)
+            
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
     }
 }

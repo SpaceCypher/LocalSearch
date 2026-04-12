@@ -21,7 +21,7 @@ let package = Package(
             dependencies: [],
             path: "Sources",
             resources: [
-                .copy("AppIcon.png")
+                .process("Resources/AppIcon.icns")
             ]
         ),
         .testTarget(

@@ -1,17 +1,19 @@
 import SwiftUI
 import Combine
 
-enum ResultDensity: String, CaseIterable, Identifiable {
+enum ResultDensity: String, CaseIterable, Identifiable, CustomStringConvertible {
     case comfortable = "Comfortable"
     case compact = "Compact"
     var id: String { self.rawValue }
+    var description: String { self.rawValue }
 }
 
-enum AppDisplayMode: String, CaseIterable, Identifiable {
+enum AppDisplayMode: String, CaseIterable, Identifiable, CustomStringConvertible {
     case dock = "Dock"
     case menuBar = "Menu Bar"
     case both = "Both"
     var id: String { self.rawValue }
+    var description: String { self.rawValue }
 }
 
 enum AccentColor: String, CaseIterable, Identifiable {
@@ -41,6 +43,9 @@ final class SettingsManager: ObservableObject {
     @AppStorage("accentColor") var accentColor: AccentColor = .blue
     @AppStorage("customAccentColor") var customAccentHex: String = "#007AFF"
     @AppStorage("displayMode") var displayMode: AppDisplayMode = .dock
+    @AppStorage("tintOpacity") var tintOpacity: Double = 0.3
+    @AppStorage("showLabels") var showLabels: Bool = true
+    @AppStorage("launchAtLogin") var launchAtLogin: Bool = false
     
     private init() {}
     
