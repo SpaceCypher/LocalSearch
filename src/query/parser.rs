@@ -44,7 +44,7 @@ impl Query {
                 // Extract scope
                 let path = part.strip_prefix("in:").unwrap();
                 scope = Some(PathBuf::from(path));
-            } else if part.contains(':') {
+            } else if part.contains(':') && part.chars().any(|c| c.is_alphabetic()) {
                 // Extract filters (after:, before:, ext:, etc.)
                 let mut split = part.splitn(2, ':');
                 if let (Some(key), Some(value)) = (split.next(), split.next()) {
@@ -59,6 +59,22 @@ impl Query {
             }
         }
         
+        // If results are still thin, try tokenizing the full string minus filters.
+        // This helps with multi-word queries like "CD LAB" which might have 
+        // special tokenization when treated as a phrase.
+        if tokens.is_empty() && !text.is_empty() {
+             let filtered: String = text.split_whitespace()
+                .filter(|p| !p.contains(':'))
+                .collect::<Vec<_>>()
+                .join(" ");
+             if !filtered.is_empty() {
+                 let fallback_tokens = tokenizer.tokenize(&filtered);
+                 for t in fallback_tokens {
+                     tokens.push(t.term);
+                 }
+             }
+        }
+        
         // Classify intent based on query patterns
         let intent = Self::classify_intent(&tokens, &filters);
         
@@ -69,6 +85,7 @@ impl Query {
             filters,
         })
     }
+
     
     fn classify_intent(tokens: &[String], filters: &HashMap<String, String>) -> QueryIntent {
         // Recovery: queries with time filters

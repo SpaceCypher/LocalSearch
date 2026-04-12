@@ -3,54 +3,44 @@ import SwiftUI
 struct QueryFieldView: View {
     @ObservedObject var viewModel: SearchViewModel
     @FocusState private var isFocused: Bool
+    @ObservedObject var settings = SettingsManager.shared
     
     var body: some View {
-        HStack(spacing: 8) {
-            // Search icon
-            Image(systemName: "magnifyingglass")
-                .foregroundColor(.secondary)
-                .frame(width: 16, height: 16)
-            
-            // Text field
-            TextField("Search", text: $viewModel.queryText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 14))
-                .focused($isFocused)
-                .onChange(of: viewModel.queryText) { newValue in
-                    viewModel.onQueryChange(newValue)
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Image(systemName: "magnifyingglass")
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 22, height: 22)
+                    .foregroundColor(settings.accentColor.color.opacity(0.8))
+                
+                TextField("Search", text: $viewModel.queryText)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 20, weight: .light))
+                    .focused($isFocused)
+                    .onChange(of: viewModel.queryText) { _, newValue in
+                        viewModel.onQueryChange(newValue)
+                    }
+                    .accessibilityLabel(viewModel.searchFieldAccessibilityLabel)
+                    .accessibilityHint(viewModel.searchFieldAccessibilityHint)
+                
+                if viewModel.showSpinner {
+                    ProgressView()
+                        .controlSize(.small)
+                        .scaleEffect(0.8)
+                        .tint(settings.accentColor.color)
+                } else if !viewModel.queryText.isEmpty {
+                    Button(action: { viewModel.clearQuery() }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary.opacity(0.5))
+                            .font(.system(size: 16))
+                    }
+                    .buttonStyle(.plain)
                 }
-                .accessibilityLabel(viewModel.searchFieldAccessibilityLabel)
-                .accessibilityHint(viewModel.searchFieldAccessibilityHint)
-            
-            // Spinner (reserved space, shown after 80ms debounce)
-            if viewModel.showSpinner {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 12, height: 12)
-            } else {
-                // Reserved space for spinner to prevent layout shift
-                Color.clear
-                    .frame(width: 12, height: 12)
             }
-            
-            // Clear button
-            if viewModel.showClearButton {
-                Button(action: {
-                    viewModel.clearQuery()
-                    isFocused = true
-                }) {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundColor(.secondary)
-                        .frame(width: 16, height: 16)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear search")
-            }
+            .padding(.horizontal, 4)
+            .padding(.vertical, 12)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color(NSColor.controlBackgroundColor))
-        .cornerRadius(6)
         .onAppear {
             isFocused = true
         }

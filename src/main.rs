@@ -1,9 +1,32 @@
 use anyhow::Result;
 use std::path::PathBuf;
 use localsearch::startup;
+use localsearch::metrics::dashboard::{HealthState, render_dashboard};
 
 fn main() -> Result<()> {
     env_logger::init();
+    
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--debug-panel") {
+        // Render a mockup state for now, in production this would pull from components
+        let state = HealthState {
+            memory_state: "Normal".to_string(),
+            segment_count: 3,
+            delta_size_bytes: 10 * 1024 * 1024,
+            wal_lag_events: 0,
+            doc_count: 500_000,
+            content_indexed_fraction: 0.98,
+            last_compaction_ago_secs: 120,
+            phantom_rate: 0.001,
+            stale_rate: 0.005,
+            query_p50_ms: 12.5,
+            query_p99_ms: 85.0,
+            zero_result_rate: 0.012,
+        };
+        println!("{}", render_dashboard(&state));
+        return Ok(());
+    }
+
     log::info!("LocalSearch starting...");
     
     // Determine data directory

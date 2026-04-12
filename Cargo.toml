@@ -3,6 +3,9 @@ name = "localsearch"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
 [workspace]
 members = [".", "extractor-xpc"]
 
@@ -23,13 +26,18 @@ thiserror = "1.0"
 anyhow = "1.0"
 bincode = "1.3"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 walkdir = "2"
+dirs = "5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 notify = "6.1"
+objc2 = "0.5"
 
 [dev-dependencies]
 tempfile = "3"
+criterion = "0.5"
+rand = "0.8"
 
 [profile.release]
 opt-level = 3

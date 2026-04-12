@@ -3,36 +3,64 @@ import SwiftUI
 struct ResultRowView: View {
     let result: SearchResult
     let isSelected: Bool
+    let isTopHit: Bool
+    
+    @ObservedObject var settings = SettingsManager.shared
     
     var body: some View {
-        HStack(spacing: 12) {
-            // File icon placeholder
-            Image(systemName: iconName)
-                .font(.system(size: 24))
-                .foregroundColor(.secondary)
-                .frame(width: 32, height: 32)
-                .opacity(iconOpacity)
+        let isCompact = settings.resultDensity == .compact
+        let accentColor = settings.accentColor.color
+        
+        HStack(spacing: isCompact ? 10 : 16) {
+            // File icon 
+            ZStack {
+                Image(systemName: iconName)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: isTopHit ? (isCompact ? 28 : 36) : (isCompact ? 20 : 24), 
+                           height: isTopHit ? (isCompact ? 28 : 36) : (isCompact ? 20 : 24))
+                    .foregroundColor(isSelected ? .primary : .secondary)
+                    .opacity(iconOpacity)
+            }
+            .frame(width: isTopHit ? (isCompact ? 36 : 48) : (isCompact ? 28 : 32),
+                   height: isTopHit ? (isCompact ? 36 : 48) : (isCompact ? 28 : 32))
             
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: isTopHit ? 4 : 2) {
                 // Filename
                 Text(displayFilename)
-                    .font(.system(size: 14))
+                    .font(.system(size: isTopHit ? (isCompact ? 15 : 17) : (isCompact ? 13 : 14), 
+                                weight: isTopHit ? .medium : .regular))
+                    .foregroundColor(.primary)
                     .lineLimit(1)
                 
                 // Path
                 Text(pathRowText)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
+                    .font(.system(size: isTopHit ? (isCompact ? 11 : 12) : (isCompact ? 10 : 11)))
+                    .foregroundColor(.secondary.opacity(0.8))
                     .lineLimit(1)
             }
             
             Spacer()
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .frame(height: 56)
-        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-        .opacity(Double(result.opacity))
+        .padding(.horizontal, isCompact ? 12 : 16)
+        .frame(minHeight: isTopHit ? (isCompact ? 56 : 72) : (isCompact ? 44 : 52))
+        .background(
+            ZStack {
+                if isSelected {
+                    accentColor.opacity(0.12)
+                    LinearGradient(
+                        colors: [accentColor.opacity(0.05), Color.clear],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                }
+            }
+        )
+        .cornerRadius(isTopHit ? 12 : 8)
+        .overlay(
+            RoundedRectangle(cornerRadius: isTopHit ? 12 : 8)
+                .stroke(isSelected ? accentColor.opacity(0.2) : Color.clear, lineWidth: 0.5)
+        )
         .accessibilityLabel(accessibilityLabel)
     }
     

@@ -55,27 +55,23 @@ class SearchViewModel: ObservableObject {
     }
     
     // F8: ScopeBarView state
-    @Published var activeScope: SearchScope = .all
+    @Published var activeScope: SearchScope = .files
     @Published var activeScopes: Set<SearchScope> = []
     
     var filteredResults: [SearchResult] {
-        guard !activeScopes.isEmpty && !activeScopes.contains(.all) else {
+        guard !activeScopes.isEmpty && !activeScopes.contains(.files) else {
             return displayResults
         }
         
         return displayResults.filter { result in
             activeScopes.contains { scope in
                 switch scope {
-                case .all:
-                    return true
-                case .documents:
-                    return result.fileKind == .document
-                case .images:
-                    return result.fileKind == .image
-                case .code:
-                    return result.fileKind == .code
-                case .folders:
-                    return result.fileKind == .folder
+                case .applications:
+                    return result.path.hasSuffix(".app") || result.path.hasSuffix(".app/")
+                case .files:
+                    return true // Handled by guard above generally, but acts as "All" for now
+                case .actions, .clipboard:
+                    return false // Mocked empty for now as backend doesn't support them
                 }
             }
         }
@@ -139,6 +135,17 @@ class SearchViewModel: ObservableObject {
         onQueryChange(suggestion)
     }
     
+    // MARK: - Selection Sync Helper
+    func syncExpandedResult() {
+        if expandedResult != nil {
+            if let index = selectedIndex, index < filteredResults.count {
+                expandedResult = filteredResults[index]
+            } else {
+                expandedResult = nil
+            }
+        }
+    }
+    
     init(backend: SearchBackendProtocol) {
         self.backend = backend
     }
@@ -159,7 +166,7 @@ class SearchViewModel: ObservableObject {
         
         // 2. Synchronous: update generation, dim results
         queryGeneration &+= 1
-        queryText = newText
+        // (queryText is already updated via the TextField binding, no need to reassign)
         
         // 3. Parse query for filters (F6)
         let parsed = QueryParser.parse(newText)
@@ -174,6 +181,7 @@ class SearchViewModel: ObservableObject {
             queryState = .idle
             displayResults = []
             selectedIndex = nil
+            expandedResult = nil
             return
         }
         
@@ -184,24 +192,25 @@ class SearchViewModel: ObservableObject {
             return
         }
         
-        // 7. Dim stale results immediately (synchronous)
-        queryState = .typing
-        dimCurrentResults()
-        
-        // 8. Start debounce task (80ms trailing-edge)
+        // 7. Start debounce task (80ms trailing-edge)
         let currentGeneration = queryGeneration
         debounceTask = Task { @MainActor in
             do {
-                try await Task.sleep(nanoseconds: 80_000_000) // 80ms
+                // Update to typing state after a short delay to avoid immediate UI thrashing
+                try await Task.sleep(nanoseconds: 40_000_000) // 40ms
+                guard currentGeneration == queryGeneration else { return }
+                queryState = .typing
                 
-                // Show spinner after debounce (F6)
+                try await Task.sleep(nanoseconds: 40_000_000) // remaining 40ms to reach 80ms total
+                
+                // Show spinner after debounce
                 guard currentGeneration == queryGeneration else { return }
                 showSpinner = true
                 
-                // After debounce, start search
+                // Start search
                 await startSearch(query: newText, generation: currentGeneration)
             } catch {
-                // Task was cancelled, do nothing
+                // Task was cancelled
             }
         }
     }
@@ -228,15 +237,13 @@ class SearchViewModel: ObservableObject {
         
         switch key {
         case "1":
-            setActiveScope(.all)
+            setActiveScope(.applications)
         case "2":
-            setActiveScope(.documents)
+            setActiveScope(.files)
         case "3":
-            setActiveScope(.images)
+            setActiveScope(.actions)
         case "4":
-            setActiveScope(.code)
-        case "5":
-            setActiveScope(.folders)
+            setActiveScope(.clipboard)
         default:
             break
         }
@@ -259,6 +266,7 @@ class SearchViewModel: ObservableObject {
                 }
             } else if let current = selectedIndex, current > 0 {
                 selectedIndex = current - 1
+                syncExpandedResult()
             }
             
         case .down:
@@ -275,8 +283,10 @@ class SearchViewModel: ObservableObject {
                 }
             } else if let current = selectedIndex, current < filteredResults.count - 1 {
                 selectedIndex = current + 1
+                syncExpandedResult()
             } else if selectedIndex == nil && !filteredResults.isEmpty {
                 selectedIndex = 0
+                syncExpandedResult()
             }
             
         case .left:
@@ -319,23 +329,41 @@ class SearchViewModel: ObservableObject {
     
     private func startSearch(query: String, generation: UInt64) async {
         queryState = .searching
+
+        // New query generation should start from a clean result set.
+        // This prevents stale rows from previous queries remaining visible.
+        displayResults = []
+        selectedIndex = nil
         
         searchTask = Task { @MainActor in
             let stream = backend.search(
                 query: query,
                 filters: parsedFilters,
-                scope: .all,
+                scope: .files,
                 cancellationToken: CancellationToken()
             )
             
-            for await result in stream {
+            for await batch in stream {
                 guard generation == queryGeneration else { break }
-                await applyResult(result, fromGeneration: generation)
+                
+                // Track selected document ID
+                let selectedDocId = selectedIndex.flatMap { displayResults[safe: $0]?.id }
+                
+                displayResults = batch // Atomic assignment prevents UI thrashing
+                
+                // Restore selection
+                if let docId = selectedDocId,
+                   let newIndex = displayResults.firstIndex(where: { $0.id == docId }) {
+                    selectedIndex = newIndex
+                } else if !displayResults.isEmpty && selectedIndex == nil {
+                    selectedIndex = 0
+                }
+                syncExpandedResult()
             }
             
             guard generation == queryGeneration else { return }
             queryState = .complete
-            showSpinner = false // Hide spinner when complete (F6)
+            showSpinner = false // Hide spinner when complete
             
             // Fetch spelling suggestions if zero results (F15)
             if displayResults.isEmpty {
@@ -346,51 +374,11 @@ class SearchViewModel: ObservableObject {
         }
     }
     
-    func applyResult(_ result: SearchResult, fromGeneration generation: UInt64) async {
-        // Generation check — discard stale results
-        guard generation == queryGeneration else { return }
-        
-        // Track selected document ID before insertion
-        let selectedDocId = selectedIndex.flatMap { displayResults[safe: $0]?.id }
-        
-        // Insert result maintaining sort order (insertion sort)
-        insertResultSorted(result)
-        
-        // Restore selection to same document (not same position)
-        if let docId = selectedDocId,
-           let newIndex = displayResults.firstIndex(where: { $0.id == docId }) {
-            selectedIndex = newIndex
-        }
-    }
-    
     // MARK: - Private Helpers
     
     private func dimCurrentResults() {
-        for i in displayResults.indices {
-            displayResults[i].opacity = 0.4
-        }
-    }
-    
-    private func insertResultSorted(_ result: SearchResult) {
-        // Binary search for insertion point
-        var left = 0
-        var right = displayResults.count
-        
-        while left < right {
-            let mid = (left + right) / 2
-            if displayResults[mid].rank > result.rank {
-                left = mid + 1
-            } else {
-                right = mid
-            }
-        }
-        
-        displayResults.insert(result, at: left)
-        
-        // Cap at 20 results
-        if displayResults.count > 20 {
-            displayResults.removeLast()
-        }
+        // Opacity dimming is now handled cleanly on the View layer via queryState
+        // to prevent extreme SwiftUI array differencing lag.
     }
 }
 
@@ -425,11 +413,10 @@ struct SearchResult: Identifiable, Equatable {
     let path: String
     let rank: Float
     let fileKind: FileKind
-    var opacity: Float = 1.0
     var permissionState: PermissionState = .granted
     
     static func == (lhs: SearchResult, rhs: SearchResult) -> Bool {
-        lhs.id == rhs.id && lhs.rank == rhs.rank && lhs.opacity == rhs.opacity && lhs.fileKind == rhs.fileKind && lhs.permissionState == rhs.permissionState
+        lhs.id == rhs.id && lhs.rank == rhs.rank && lhs.fileKind == rhs.fileKind && lhs.permissionState == rhs.permissionState
     }
 }
 
@@ -441,7 +428,7 @@ protocol SearchBackendProtocol {
         filters: [QueryFilter],
         scope: SearchScope,
         cancellationToken: CancellationToken
-    ) -> AsyncStream<SearchResult>
+    ) -> AsyncStream<[SearchResult]>
     
     func systemState() -> AsyncStream<SystemState>
     func indexProgress() -> AsyncStream<IndexProgress?>
@@ -452,11 +439,10 @@ protocol SearchBackendProtocol {
 // MARK: - Supporting Types
 
 enum SearchScope: Equatable, CaseIterable {
-    case all
-    case documents
-    case images
-    case code
-    case folders
+    case applications
+    case files
+    case actions
+    case clipboard
 }
 
 struct CancellationToken {

@@ -19,7 +19,10 @@ let package = Package(
         .executableTarget(
             name: "LocalSearch",
             dependencies: [],
-            path: "Sources"
+            path: "Sources",
+            resources: [
+                .copy("AppIcon.png")
+            ]
         ),
         .testTarget(
             name: "LocalSearchTests",

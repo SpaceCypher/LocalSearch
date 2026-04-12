@@ -40,7 +40,7 @@ impl IntegrityChecker {
         let mut phantom_count = 0;
         let mut stale_count = 0;
 
-        for (doc_id, path, indexed_mtime) in self.documents.iter().take(sample_size) {
+        for (_doc_id, path, indexed_mtime) in self.documents.iter().take(sample_size) {
             match std::fs::metadata(path) {
                 Ok(metadata) => {
                     let disk_mtime = metadata.modified()
@@ -188,7 +188,26 @@ impl MetricsCollector {
             )?;
         }
 
-        Ok(())
+    /// Get latency stats (P50, P99)
+    pub fn get_latency_stats(&self) -> Result<(f64, f64)> {
+        let mut p50 = 0.0;
+        let mut p99 = 0.0;
+
+        let mut latencies = Vec::new();
+        let mut stmt = self.db.prepare("SELECT latency_ms FROM query_metrics ORDER BY latency_ms")?;
+        let rows = stmt.query_map([], |row| row.get::<_, i64>(0))?;
+
+        for row in rows {
+            latencies.push(row? as f64);
+        }
+
+        if !latencies.is_empty() {
+            let n = latencies.len();
+            p50 = latencies[n / 2];
+            p99 = latencies[(n * 99) / 100];
+        }
+
+        Ok((p50, p99))
     }
 }
 

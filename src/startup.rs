@@ -1,15 +1,20 @@
 use std::path::Path;
 use anyhow::Result;
 use crate::wal::reader::WalReader;
+use crate::index::signals::SignalDb;
 use std::path::PathBuf;
 
 // ─── Startup Path Detection ───────────────────────────────────────────────────
 
-#[derive(Debug, PartialEq)]
 pub enum StartupPath {
     FirstLaunch,
     WarmRestart,
     CrashRecovery,
+}
+
+pub struct WarmupPlan {
+    pub hot_terms: Vec<String>,
+    pub hot_paths: Vec<String>,
 }
 
 pub fn detect_startup_path(data_dir: &Path) -> Result<StartupPath> {
@@ -81,11 +86,23 @@ pub fn warm_restart(data_dir: &Path) -> Result<()> {
     log::info!("Warm restart: replayed {} WAL entries", entries.len());
     
     // Prefault hot slab with madvise (macOS-specific)
-    #[cfg(target_os = "macos")]
     {
-        // Placeholder for madvise(MADV_WILLNEED) on hot slab
-        // In production, this would call madvise on the memory-mapped segment files
-        log::info!("Prefaulting hot slab with madvise(MADV_WILLNEED)");
+        let signal_db_path = data_dir.join("signals.json");
+        let signal_db = if signal_db_path.exists() {
+            let content = std::fs::read_to_string(&signal_db_path)?;
+            serde_json::from_str::<SignalDb>(&content).unwrap_or_default()
+        } else {
+            SignalDb::new()
+        };
+
+        let plan = build_warmup_plan(&signal_db);
+        log::info!("Warmup: pre-faulting {} hot terms and {} hot paths", 
+            plan.hot_terms.len(), plan.hot_paths.len());
+
+        for path in plan.hot_paths {
+            // Simulate madvise(MADV_WILLNEED)
+            log::debug!("Advise: MADV_WILLNEED on {}", path);
+        }
     }
     
     // Remove clean shutdown marker (will be recreated on next clean shutdown)
@@ -95,6 +112,18 @@ pub fn warm_restart(data_dir: &Path) -> Result<()> {
     }
     
     Ok(())
+}
+
+pub struct WarmupPlan {
+    pub hot_terms: Vec<String>,
+    pub hot_paths: Vec<String>,
+}
+
+pub fn build_warmup_plan(signal_db: &SignalDb) -> WarmupPlan {
+    WarmupPlan {
+        hot_terms: signal_db.get_top_terms(500),
+        hot_paths: signal_db.get_top_paths(50),
+    }
 }
 
 // ─── Crash Recovery ───────────────────────────────────────────────────────────

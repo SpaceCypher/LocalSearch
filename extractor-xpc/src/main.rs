@@ -7,5 +7,6 @@
 fn main() {
     env_logger::init();
     log::info!("localsearch-extractor XPC service starting...");
-    // XPC event loop will be wired in Task 25
+    // XPC event loop will be wired in Task 25.
+    // Task 21 FFI entrypoints currently live in the main `localsearch` crate.
 }

@@ -5,7 +5,7 @@ import Foundation
 class MockBackend: SearchBackendProtocol {
     var mockSuggestions: [String] = []
     
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         AsyncStream { continuation in
             continuation.finish()
         }

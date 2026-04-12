@@ -7,6 +7,8 @@ struct ZeroResultsView: View {
     let note: String
     let onSelectSuggestion: (String) -> Void
     
+    @ObservedObject var settings = SettingsManager.shared
+    
     var body: some View {
         VStack(spacing: 12) {
             Text("No results for \"\(query)\"")
@@ -25,7 +27,7 @@ struct ZeroResultsView: View {
                         }) {
                             Text(suggestion)
                                 .font(.system(size: 12))
-                                .foregroundColor(.accentColor)
+                                .foregroundColor(settings.accentColor.color)
                         }
                         .buttonStyle(.plain)
                     }

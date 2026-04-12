@@ -55,11 +55,11 @@ impl TrigramIndex {
 /// Extract trigrams from a string
 fn extract_trigrams(s: &str) -> HashSet<String> {
     let s = s.to_lowercase();
-    if s.len() < 3 {
+    let chars: Vec<char> = s.chars().collect();
+    if chars.len() < 3 {
         return HashSet::new();
     }
-    
-    let chars: Vec<char> = s.chars().collect();
+
     let mut trigrams = HashSet::new();
     
     for i in 0..=chars.len().saturating_sub(3) {

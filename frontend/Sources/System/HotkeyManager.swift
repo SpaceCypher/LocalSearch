@@ -48,36 +48,32 @@ class HotkeyManager {
     }
     
     func toggle() {
-        guard let controller = windowController else {
-            print("HotkeyManager: No window controller set")
-            return
-        }
-        
+        print("HotkeyManager: toggle() triggered (isVisible: \(isWindowVisible))")
         if isWindowVisible {
-            // Hide window
-            if let hideMethod = controller.hideWindow {
-                hideMethod()
-            } else if let nsController = controller as? NSWindowController {
-                nsController.window?.orderOut(nil)
-            }
-            isWindowVisible = false
+            hide()
         } else {
-            // Show window
-            controller.showWindow(nil)
-            
-            // Position at cursor if possible
-            if let nsController = controller as? NSWindowController,
-               let window = nsController.window {
-                let mouseLocation = NSEvent.mouseLocation
-                let windowFrame = window.frame
-                let x = mouseLocation.x - windowFrame.width / 2
-                let y = mouseLocation.y - windowFrame.height / 2
-                window.setFrameOrigin(NSPoint(x: x, y: y))
-                window.makeKeyAndOrderFront(nil)
-            }
-            
-            isWindowVisible = true
+            show()
         }
+    }
+    
+    func show() {
+        print("HotkeyManager: show() triggered")
+        guard let controller = windowController else { 
+            print("HotkeyManager: show() failed - windowController is nil")
+            return 
+        }
+        controller.showWindow(nil)
+        isWindowVisible = true
+    }
+    
+    func hide() {
+        guard let controller = windowController else { return }
+        if let hideMethod = controller.hideWindow {
+            hideMethod()
+        } else if let nsController = controller as? NSWindowController {
+            nsController.window?.orderOut(nil)
+        }
+        isWindowVisible = false
     }
     
     private func registerWithCGEventTap() -> Bool {

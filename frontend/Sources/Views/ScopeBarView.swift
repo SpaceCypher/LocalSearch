@@ -31,11 +31,10 @@ struct ScopeBarView: View {
 extension SearchScope {
     var displayName: String {
         switch self {
-        case .all: return "All"
-        case .documents: return "Documents"
-        case .images: return "Images"
-        case .code: return "Code"
-        case .folders: return "Folders"
+        case .applications: return "Applications"
+        case .files: return "Files"
+        case .actions: return "Actions"
+        case .clipboard: return "Clipboard"
         }
     }
 }

@@ -27,7 +27,7 @@ pub fn compute_reconciliation_diff(
 ) -> anyhow::Result<ReconciliationDiff> {
     let mut to_add = Vec::new();
     let mut to_delete = Vec::new();
-    let mut to_update = Vec::new();
+    let to_update = Vec::new();
 
     // Collect all files currently on disk
     let mut disk_files = HashSet::new();

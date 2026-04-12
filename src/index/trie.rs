@@ -15,6 +15,8 @@ struct TrieNode {
     docs: RoaringBitmap,
     /// Child nodes (path component -> node)
     children: HashMap<String, TrieNode>,
+    /// Precomputed top document IDs in this subtree
+    top_docs: Vec<DocId>,
 }
 
 impl TrieNode {
@@ -22,6 +24,7 @@ impl TrieNode {
         Self {
             docs: RoaringBitmap::new(),
             children: HashMap::new(),
+            top_docs: Vec::new(),
         }
     }
 }
@@ -30,12 +33,15 @@ impl TrieNode {
 #[derive(Debug)]
 pub struct PathTrie {
     root: TrieNode,
+    /// Mapping from component prefix to top document IDs
+    prefix_cache: HashMap<String, Vec<DocId>>,
 }
 
 impl PathTrie {
     pub fn new() -> Self {
         Self {
             root: TrieNode::new(),
+            prefix_cache: HashMap::new(),
         }
     }
 
@@ -71,6 +77,62 @@ impl PathTrie {
         
         // Collect all documents under this scope (recursive)
         self.collect_all_docs(current)
+    }
+
+    pub fn rebuild_prefix_cache(&mut self, top_k: usize) {
+        // Clear existing cache
+        self.prefix_cache.clear();
+        
+        // Recursively compute top_docs for each node and populate prefix_cache
+        Self::rebuild_node_cache(&mut self.root, top_k, &mut self.prefix_cache);
+    }
+
+    fn rebuild_node_cache(
+        node: &mut TrieNode,
+        top_k: usize,
+        prefix_cache: &mut HashMap<String, Vec<DocId>>,
+    ) -> Vec<DocId> {
+        let mut all_docs = Vec::new();
+
+        // Add docs at this node
+        for doc_id_u32 in node.docs.iter() {
+            all_docs.push(DocId(doc_id_u32 as u64));
+        }
+
+        // Recursively process children
+        for (name, child) in node.children.iter_mut() {
+            let child_docs = Self::rebuild_node_cache(child, top_k, prefix_cache);
+            all_docs.extend(child_docs);
+
+            // Populate prefix cache for this component name
+            // We only cache short prefixes to keep memory bounded
+            let max_prefix = name.len().min(4);
+            for i in 1..=max_prefix {
+                let prefix = name[..i].to_lowercase();
+                let entry = prefix_cache.entry(prefix).or_insert_with(Vec::new);
+                
+                // Add top child docs to this prefix
+                for doc_id in &child.top_docs {
+                    if !entry.contains(doc_id) {
+                        entry.push(*doc_id);
+                    }
+                }
+                entry.sort_by(|a, b| b.0.cmp(&a.0)); // DocId larger = more recent
+                entry.truncate(top_k);
+            }
+        }
+
+        // Sort by DocId descending and truncate
+        all_docs.sort_by(|a, b| b.0.cmp(&a.0));
+        all_docs.dedup();
+        all_docs.truncate(top_k);
+        
+        node.top_docs = all_docs.clone();
+        all_docs
+    }
+
+    pub fn prefix_cache_lookup(&self, prefix: &str) -> Option<Vec<DocId>> {
+        self.prefix_cache.get(&prefix.to_lowercase()).cloned()
     }
 
     fn collect_all_docs(&self, node: &TrieNode) -> RoaringBitmap {
@@ -136,5 +198,37 @@ mod tests {
         assert!(result.contains(2u32));
         assert!(result.contains(3u32));
         assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_prefix_cache_returns_precomputed_results() {
+        let mut trie = PathTrie::new();
+        trie.insert("/Users/alice/report.pdf", DocId(1));
+        trie.insert("/Users/alice/readme.md", DocId(2));
+        trie.insert("/Users/bob/random.txt", DocId(3));
+        trie.rebuild_prefix_cache(100);
+
+        let cached = trie.prefix_cache_lookup("re");
+        assert!(cached.is_some());
+        let hits = cached.unwrap();
+        // "report.pdf" and "readme.md" start with "re"
+        assert!(hits.contains(&DocId(1)));
+        assert!(hits.contains(&DocId(2)));
+        assert!(!hits.contains(&DocId(3)));
+    }
+
+    #[test]
+    fn test_prefix_cache_15ms_warm() {
+        let mut trie = PathTrie::new();
+        for i in 0..1000 {
+            trie.insert(&format!("/path/to/file_{}.txt", i), DocId(i as u64));
+        }
+        trie.rebuild_prefix_cache(100);
+
+        let start = std::time::Instant::now();
+        let _ = trie.prefix_cache_lookup("fi");
+        let elapsed = start.elapsed();
+        println!("Prefix cache lookup took: {:?}", elapsed);
+        assert!(elapsed.as_millis() < 15);
     }
 }

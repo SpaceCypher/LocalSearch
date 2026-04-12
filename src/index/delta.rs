@@ -41,6 +41,7 @@ impl Posting {
 pub struct Document {
     pub doc_id: DocId,
     pub path: String,
+    pub content_hash: u64,
 }
 
 impl Document {
@@ -49,6 +50,7 @@ impl Document {
         Self {
             doc_id,
             path: path.to_string(),
+            content_hash: 0,
         }
     }
 }
