@@ -187,6 +187,9 @@ impl MetricsCollector {
                 [],
             )?;
         }
+        
+        Ok(())
+    }
 
     /// Get latency stats (P50, P99)
     pub fn get_latency_stats(&self) -> Result<(f64, f64)> {

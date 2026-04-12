@@ -88,6 +88,7 @@ fn test_wal_to_delta_index_pipeline() {
         let doc = Document {
             doc_id: DocId(entry.doc_id),
             path: entry.path.clone(),
+            content_hash: 0,
         };
         
         // Create postings from tokens

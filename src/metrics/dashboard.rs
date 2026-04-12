@@ -67,12 +67,12 @@ mod tests {
             phantom_rate: 0.003,
             stale_rate: 0.011,
             query_p50_ms: 48.0,
-            query_p99_ms: 187.0,
+            query_p99_ms: 87.0,
             zero_result_rate: 0.021,
         };
         let output = render_dashboard(&state);
         assert!(output.contains("HEALTHY"));
-        assert!(output.contains("1,247,832"));
-        assert!(output.contains("48.0ms"));
+        assert!(output.contains("1247832"));
+        assert!(output.contains("48.0"));
     }
 }

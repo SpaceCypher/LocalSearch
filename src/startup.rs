@@ -6,16 +6,14 @@ use std::path::PathBuf;
 
 // ─── Startup Path Detection ───────────────────────────────────────────────────
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum StartupPath {
     FirstLaunch,
     WarmRestart,
     CrashRecovery,
 }
 
-pub struct WarmupPlan {
-    pub hot_terms: Vec<String>,
-    pub hot_paths: Vec<String>,
-}
+
 
 pub fn detect_startup_path(data_dir: &Path) -> Result<StartupPath> {
     let wal_path = data_dir.join("wal.log");

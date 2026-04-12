@@ -54,7 +54,12 @@ impl QueryExecutor {
         }
     }
 
-    pub fn execute(&self, query: Query) -> Result<Vec<SearchResult>, String> {
+    pub fn execute(&self, query: Query, cancel_token: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>) -> Result<Vec<SearchResult>, String> {
+        // Check cancellation early
+        let is_cancelled = || {
+            cancel_token.as_ref().map_or(false, |t| t.load(std::sync::atomic::Ordering::Relaxed))
+        };
+
         // Step 0: Check prefix cache (fast path)
         if query.tokens.len() == 1 && query.scope.is_none() && query.filters.is_empty() {
             if let Some(doc_ids) = self.path_trie.prefix_cache_lookup(&query.tokens[0]) {
@@ -83,6 +88,7 @@ impl QueryExecutor {
 
         let mut all_provider_results: Vec<Vec<RawResult>> = Vec::new();
         for provider in providers {
+            if is_cancelled() { return Ok(Vec::new()); }
             let mut results = provider.provide(&query);
             ScoreNormalizer::normalize(&mut results);
             all_provider_results.push(results);
@@ -109,6 +115,8 @@ impl QueryExecutor {
         let mut final_results = Vec::new();
 
         for (doc_id, base_score) in merged_scores {
+            if is_cancelled() { break; }
+            
             // FSI Filter: Document Validity & Volume Isolation
             // 1. Check if document is deleted in DeltaIndex
             if self.delta_index.is_deleted(doc_id) {
@@ -244,6 +252,7 @@ mod tests {
             let doc = Document {
                 doc_id,
                 path: path.to_string(),
+                content_hash: 0,
             };
             delta_index.insert_document(doc, postings).unwrap();
             path_trie.insert(path, doc_id);
@@ -260,7 +269,7 @@ mod tests {
             ("/test/notes.txt", "meeting notes"),
         ]);
 
-        let results = executor.execute(Query::parse("quartely report").unwrap()).unwrap();
+        let results = executor.execute(Query::parse("quartely report").unwrap(), None).unwrap();
         assert_eq!(results[0].path, "/test/quarterly_report.pdf");
     }
 
@@ -271,7 +280,7 @@ mod tests {
             ("/test/jones_notes.pdf", "annual notes"),
         ]);
 
-        let results = executor.execute(Query::parse("mayer").unwrap()).unwrap();
+        let results = executor.execute(Query::parse("mayer").unwrap(), None).unwrap();
         assert!(!results.is_empty());
         assert!(results.iter().any(|r| r.path.contains("meyer")));
     }
@@ -284,7 +293,7 @@ mod tests {
         ]);
         
         executor.path_trie.rebuild_prefix_cache(10);
-        let results = executor.execute(Query::parse("qu").unwrap()).unwrap();
+        let results = executor.execute(Query::parse("qu").unwrap(), None).unwrap();
         
         assert!(!results.is_empty());
         assert_eq!(results[0].path, "/test/quarterly_report.pdf");

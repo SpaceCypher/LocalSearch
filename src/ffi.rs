@@ -351,6 +351,7 @@ fn build_search_engine() -> Option<SearchEngine> {
             let doc = Document {
                 doc_id,
                 path: path_str.clone(),
+                content_hash: 0,
             };
             let _ = delta_index.insert_document(doc, postings);
             path_trie.insert(&path_str, doc_id);
@@ -373,7 +374,7 @@ fn build_search_engine() -> Option<SearchEngine> {
 
 fn run_engine_query(engine: &SearchEngine, query: &str) -> Option<Vec<OwnedSearchResult>> {
     let parsed = Query::parse(query).ok()?;
-    let results = engine.executor.execute(parsed).ok()?;
+    let results = engine.executor.execute(parsed, None).ok()?;
     Some(
         results
             .into_iter()

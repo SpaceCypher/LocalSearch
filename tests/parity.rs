@@ -49,6 +49,7 @@ fn test_index_disk_parity_basic() {
         let doc = Document {
             doc_id,
             path: path.to_string_lossy().to_string(),
+            content_hash: 0,
         };
         
         // Insert into delta index

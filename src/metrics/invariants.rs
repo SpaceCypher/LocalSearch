@@ -55,7 +55,7 @@ mod tests {
         let doc_id = DocId(1);
         let path = "/test/path.txt";
         
-        delta.insert_document(Document { doc_id, path: path.to_string() }, std::collections::HashMap::new()).unwrap();
+        delta.insert_document(Document { doc_id, path: path.to_string(), content_hash: 0 }, std::collections::HashMap::new()).unwrap();
         trie.insert(path, doc_id);
 
         assert!(InvariantChecker::check_cross_index_consistency(&delta, &trie).is_ok());
@@ -69,7 +69,7 @@ mod tests {
         let doc_id = DocId(1);
         let path = "/test/path.txt";
         
-        delta.insert_document(Document { doc_id, path: path.to_string() }, std::collections::HashMap::new()).unwrap();
+        delta.insert_document(Document { doc_id, path: path.to_string(), content_hash: 0 }, std::collections::HashMap::new()).unwrap();
         // Skip trie insert to cause violation
 
         assert!(InvariantChecker::check_cross_index_consistency(&delta, &trie).is_err());
