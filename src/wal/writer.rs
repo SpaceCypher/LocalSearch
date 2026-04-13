@@ -229,12 +229,13 @@ mod tests {
     fn test_wal_writer_append_and_checkpoint() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.wal");
-        let writer = WalWriter::new(&path).unwrap();
+        let writer = WalWriter::new_with_deadline(&path, Duration::from_secs(60)).unwrap();
 
         for i in 0..300u64 {
             let entry = WalEntry { seq: i, ..WalEntry::new_test() };
             writer.append(entry).unwrap();
         }
+        writer.flush().unwrap();
 
         // Checkpoint fires when total_flushed crosses 256
         assert_eq!(writer.checkpoint_seq(), 256);

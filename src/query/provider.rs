@@ -53,6 +53,13 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
 
     fn provide(&self, query: &Query) -> Vec<RawResult> {
         let mut expanded_terms = Vec::new();
+        let mut doc_lengths: HashMap<DocId, u64> = HashMap::new();
+
+        for postings in self.delta_index.index.values() {
+            for posting in postings {
+                *doc_lengths.entry(posting.doc_id).or_insert(0) += posting.term_freq as u64;
+            }
+        }
         
         // Expansion logic (moved from executor.rs)
         for token_str in &query.tokens {
@@ -86,10 +93,12 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
                     if self.delta_index.is_deleted(posting.doc_id) {
                         continue;
                     }
+
+                    let doc_len = doc_lengths.get(&posting.doc_id).copied().unwrap_or(1);
                     
                     let score = self.scorer.score(
                         posting.term_freq as u64,
-                        100, // TODO: doc len
+                        doc_len,
                         posting_list.postings.len() as u64,
                     );
                     

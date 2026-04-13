@@ -1,5 +1,3 @@
-use crate::metrics::collector::IntegrityReport;
-
 pub struct HealthState {
     pub memory_state: String,
     pub segment_count: usize,
@@ -13,6 +11,8 @@ pub struct HealthState {
     pub query_p50_ms: f64,
     pub query_p99_ms: f64,
     pub zero_result_rate: f32,
+    pub thread_count: usize,
+    pub watchdog_healthy: bool,
 }
 
 pub fn render_dashboard(state: &HealthState) -> String {
@@ -36,6 +36,7 @@ pub fn render_dashboard(state: &HealthState) -> String {
          │ PERFORMANCE                                                              │\n\
          │   Latency P50: {:<12.1}ms  Latency P99: {:<12.1}ms          │\n\
          │   Zero Results: {:<5.1}%                                                │\n\
+         │   Threads: {:<18} Watchdog: {:<17} │\n\
          ├──────────────────────────────────────────────────────────────────────────┤\n\
          │ INTEGRITY                                                                │\n\
          │   Phantom Rate: {:<12.1}%  Stale Rate:  {:<12.1}%          │\n\
@@ -46,6 +47,8 @@ pub fn render_dashboard(state: &HealthState) -> String {
         state.last_compaction_ago_secs, state.wal_lag_events,
         state.query_p50_ms, state.query_p99_ms,
         state.zero_result_rate * 100.0,
+        state.thread_count,
+        if state.watchdog_healthy { "OK" } else { "ALERT" },
         state.phantom_rate * 100.0, state.stale_rate * 100.0
     )
 }
@@ -69,6 +72,8 @@ mod tests {
             query_p50_ms: 48.0,
             query_p99_ms: 87.0,
             zero_result_rate: 0.021,
+            thread_count: 7,
+            watchdog_healthy: true,
         };
         let output = render_dashboard(&state);
         assert!(output.contains("HEALTHY"));

@@ -1,6 +1,10 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver};
+use std::time::Duration;
+#[cfg(target_os = "macos")]
+use notify::{RecursiveMode, Watcher};
 
 /// Scope of filesystem access granted by macOS TCC (Transparency, Consent, and Control).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +34,10 @@ impl TccMonitor {
 
     /// Performs a probe to determine the actual TCC scope.
     pub fn check_current_scope(&self) -> TccScope {
+        Self::probe_scope()
+    }
+
+    fn probe_scope() -> TccScope {
         #[cfg(target_os = "macos")]
         {
             // PROBE: Try to access a path that requires Full Disk Access.
@@ -44,6 +52,86 @@ impl TccMonitor {
         }
         
         TccScope::FullDiskAccess
+    }
+
+    /// Re-checks current scope and updates internal state.
+    pub fn refresh_scope(&mut self) -> TccScope {
+        let scope = Self::probe_scope();
+        self.update_scope(scope);
+        scope
+    }
+
+    /// Starts a background watcher that emits scope changes.
+    /// This is a lightweight subscription path used when native revocation
+    /// notifications are unavailable.
+    pub fn start_scope_watcher(&self, poll_interval: Duration) -> Receiver<TccScope> {
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut last = TccMonitor::probe_scope();
+
+            #[cfg(target_os = "macos")]
+            let (event_rx_opt, _watcher) = {
+                let (event_tx, event_rx) = mpsc::channel();
+
+                let mut watcher = match notify::recommended_watcher(move |res| {
+                    let _ = event_tx.send(res);
+                }) {
+                    Ok(w) => w,
+                    Err(_) => {
+                        // Fallback to polling-only mode when watcher creation fails.
+                        loop {
+                            std::thread::sleep(poll_interval);
+                            let current = TccMonitor::probe_scope();
+                            if current != last {
+                                if tx.send(current).is_err() {
+                                    break;
+                                }
+                                last = current;
+                            }
+                        }
+                        return;
+                    }
+                };
+
+                if let Some(home) = dirs::home_dir() {
+                    let tcc_db = home.join("Library/Application Support/com.apple.TCC/TCC.db");
+                    let _ = watcher.watch(&tcc_db, RecursiveMode::NonRecursive);
+                }
+
+                (Some(event_rx), watcher)
+            };
+
+            loop {
+                #[cfg(target_os = "macos")]
+                {
+                    if let Some(event_rx) = &event_rx_opt {
+                        match event_rx.recv_timeout(poll_interval) {
+                            Ok(_) | Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                                let current = TccMonitor::probe_scope();
+                                if current != last {
+                                    if tx.send(current).is_err() {
+                                        break;
+                                    }
+                                    last = current;
+                                }
+                            }
+                            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                        }
+                        continue;
+                    }
+                }
+
+                std::thread::sleep(poll_interval);
+                let current = TccMonitor::probe_scope();
+                if current != last {
+                    if tx.send(current).is_err() {
+                        break;
+                    }
+                    last = current;
+                }
+            }
+        });
+        rx
     }
 
     /// Updates the internal scope and toggles suspension if needed.
@@ -122,6 +210,13 @@ mod tests {
         
         monitor.update_scope(TccScope::HotPathsOnly);
         assert!(!monitor.is_crawl_suspended());
+    }
+
+    #[test]
+    fn test_tcc_refresh_scope_updates_internal_state() {
+        let mut monitor = TccMonitor::new();
+        let refreshed = monitor.refresh_scope();
+        assert_eq!(monitor.current_scope(), refreshed);
     }
 
     #[cfg(target_os = "macos")]

@@ -1,10 +1,13 @@
 use crate::index::delta::{DeltaIndex, DocId, Document, Posting};
+use crate::metrics::InvariantChecker;
+use crate::resource::storage::{cold_segment_read_chunk, detect_storage_type};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use lz4_flex::compress_prepend_size;
 use lz4_flex::decompress_size_prepended;
+use xxhash_rust::xxh3::xxh3_64;
 #[cfg(unix)]
 use std::os::unix::fs::FileExt;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -54,8 +57,9 @@ impl Segment {
         #[cfg(unix)]
         {
             let file = fs::File::open(&self.path)?;
-            // Use pread to fault in the first 4KB (header/dictionary start)
-            let mut buf = [0u8; 4096];
+            // Storage-aware prefetch chunk to reduce HDD seek pressure.
+            let chunk = cold_segment_read_chunk(detect_storage_type());
+            let mut buf = vec![0u8; chunk];
             let _ = file.read_at(&mut buf, 0);
         }
         Ok(())
@@ -117,12 +121,17 @@ impl SegmentBuilder {
         
         // Compress with LZ4
         let compressed = compress_prepend_size(&serialized);
+        let expected_hash = xxh3_64(&compressed);
         
         file.write_all(&compressed)?;
         file.sync_all()?;
         
         // Atomic rename
         fs::rename(&temp_path, final_path)?;
+
+        // Invariant: segment bytes should remain immutable right after compaction.
+        InvariantChecker::check_segment_immutability(final_path, expected_hash)
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e.to_string()))?;
         
         Ok(final_path.to_path_buf())
     }

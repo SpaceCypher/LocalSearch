@@ -30,18 +30,45 @@ impl ExtractionClient {
     pub fn extract<P: AsRef<Path>>(&self, path: P) -> Result<ExtractionResult> {
         let path_ref = path.as_ref();
         let hash = Self::calculate_content_hash(path_ref)?;
-        
-        // This is a placeholder for the actual extraction logic (from Task 25)
-        // In a real implementation, this would call specialized extractors.
-        let mut file = File::open(path_ref)?;
-        let mut text = String::new();
-        let n = file.read_to_string(&mut text)?;
+
+        // Read only first 64KB for bounded extraction cost.
+        let file = File::open(path_ref)?;
+        let mut reader = BufReader::new(file);
+        let mut buffer = vec![0u8; 65536];
+        let n = reader.read(&mut buffer)?;
+        let text = String::from_utf8_lossy(&buffer[..n]).to_string();
+
+        let full_content = if n < 65536 {
+            true
+        } else {
+            let mut extra = [0u8; 1];
+            reader.read(&mut extra)? == 0
+        };
         
         Ok(ExtractionResult {
             text,
-            full_content: n < 65536,
+            full_content,
             content_hash: hash,
         })
+    }
+
+    /// Returns true when extraction should run based on hash change.
+    pub fn should_extract<P: AsRef<Path>>(path: P, previous_hash: Option<u64>) -> Result<bool> {
+        let current_hash = Self::calculate_content_hash(path)?;
+        Ok(previous_hash.map_or(true, |prev| prev != current_hash))
+    }
+
+    /// Extracts only when content hash changed; returns None when unchanged.
+    pub fn extract_if_changed<P: AsRef<Path>>(
+        &self,
+        path: P,
+        previous_hash: Option<u64>,
+    ) -> Result<Option<ExtractionResult>> {
+        let path_ref = path.as_ref();
+        if !Self::should_extract(path_ref, previous_hash)? {
+            return Ok(None);
+        }
+        self.extract(path_ref).map(Some)
     }
 }
 
@@ -66,5 +93,40 @@ mod tests {
         file.write_all(b"hello rust").unwrap();
         let hash3 = ExtractionClient::calculate_content_hash(&file_path).unwrap();
         assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn test_extract_if_changed_skips_unchanged_file() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("stable.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"unchanged content").unwrap();
+
+        let client = ExtractionClient::new();
+        let first = client.extract_if_changed(&file_path, None).unwrap();
+        assert!(first.is_some());
+
+        let prev_hash = first.unwrap().content_hash;
+        let second = client.extract_if_changed(&file_path, Some(prev_hash)).unwrap();
+        assert!(second.is_none());
+    }
+
+    #[test]
+    fn test_extract_if_changed_runs_when_file_changes() {
+        let dir = tempdir().unwrap();
+        let file_path = dir.path().join("changing.txt");
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"v1 content").unwrap();
+
+        let client = ExtractionClient::new();
+        let first = client.extract_if_changed(&file_path, None).unwrap().unwrap();
+
+        let mut file = File::create(&file_path).unwrap();
+        file.write_all(b"v2 content changed").unwrap();
+
+        let second = client
+            .extract_if_changed(&file_path, Some(first.content_hash))
+            .unwrap();
+        assert!(second.is_some());
     }
 }

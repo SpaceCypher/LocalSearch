@@ -58,6 +58,26 @@ pub fn percentile(scores: &mut [f64], p: usize) -> f64 {
     scores[idx]
 }
 
+pub fn compute_rbo_all<T: Eq + std::hash::Hash>(
+    baseline: &[Vec<T>],
+    candidate: &[Vec<T>],
+    p: f64,
+) -> Vec<f64>
+where
+    T: Clone,
+{
+    let rbo = RankBiasedOverlap::new(p);
+    baseline
+        .iter()
+        .zip(candidate.iter())
+        .map(|(b, c)| rbo.calculate(b, c))
+        .collect()
+}
+
+pub fn passes_shadow_threshold(scores: &mut [f64], min_p10: f64) -> bool {
+    percentile(scores, 10) >= min_p10
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +102,27 @@ mod tests {
         let score2 = rbo.calculate(&list1, &list3);
         
         assert!(score1 > score2); // Swapping top items should hurt more
+    }
+
+    #[test]
+    fn test_shadow_ranking_p10_threshold() {
+        let baseline = vec![
+            vec!["a", "b", "c", "d"],
+            vec!["w", "x", "y", "z"],
+            vec!["m", "n", "o", "p"],
+            vec!["r", "s", "t", "u"],
+            vec!["k", "l", "q", "v"],
+        ];
+
+        let candidate = vec![
+            vec!["a", "b", "d", "c"],
+            vec!["w", "x", "z", "y"],
+            vec!["m", "o", "n", "p"],
+            vec!["r", "t", "s", "u"],
+            vec!["k", "l", "v", "q"],
+        ];
+
+        let mut scores = compute_rbo_all(&baseline, &candidate, 0.9);
+        assert!(passes_shadow_threshold(&mut scores, 0.7));
     }
 }

@@ -1,7 +1,12 @@
-use crate::query::parser::{Query, Tokenizer};
-use crate::query::ranker::{BM25Scorer, Ranker};
+use crate::query::parser::Query;
+#[cfg(test)]
+use crate::query::parser::Tokenizer;
+use crate::query::ranker::Ranker;
+#[cfg(test)]
 use crate::query::phonetic::double_metaphone;
-use crate::index::delta::{DeltaIndex, Document, DocId};
+use crate::index::delta::{DeltaIndex, DocId};
+#[cfg(test)]
+use crate::index::delta::Document;
 use crate::index::bktree::BkTree;
 use crate::index::trie::PathTrie;
 use crate::index::trigram::TrigramIndex;
@@ -26,7 +31,6 @@ pub struct QueryExecutor {
     trigram_index: TrigramIndex,
     phonetic_index: HashMap<String, Vec<String>>, // phonetic code → terms
     pub ranker: Ranker,
-    tokenizer: Tokenizer,
     pub spotlight_fallback: crate::query::spotlight_fallback::SpotlightFallback,
     pub is_warming: bool,
 }
@@ -39,8 +43,14 @@ impl QueryExecutor {
         trigram_index: TrigramIndex,
         phonetic_index: HashMap<String, Vec<String>>,
     ) -> Self {
-        let total_docs = 1000; // TODO: get from index
-        let avg_doc_len = 50.0; // TODO: calculate from index
+        let total_docs = delta_index.documents.len().max(1) as u64;
+        let total_terms: u64 = delta_index
+            .index
+            .values()
+            .flat_map(|postings| postings.iter())
+            .map(|posting| posting.term_freq as u64)
+            .sum();
+        let avg_doc_len = (total_terms as f32 / total_docs as f32).max(1.0);
         Self {
             delta_index,
             bk_tree,
@@ -48,7 +58,6 @@ impl QueryExecutor {
             trigram_index,
             phonetic_index,
             ranker: Ranker::new(total_docs, avg_doc_len),
-            tokenizer: Tokenizer::new(),
             spotlight_fallback: crate::query::spotlight_fallback::SpotlightFallback::new(),
             is_warming: false,
         }
@@ -123,7 +132,7 @@ impl QueryExecutor {
                 continue;
             }
 
-            // 2. Placeholder for Volume Isolation (Task 40 will implement VolumeMonitor)
+            // 2. Volume policy guard (network volume queryability/opt-in)
             if !self.is_path_accessible(&doc_id) {
                 continue;
             }
@@ -185,8 +194,11 @@ impl QueryExecutor {
     }
 
     fn is_path_accessible(&self, doc_id: &DocId) -> bool {
-        // Verification logic for FSI Filter
-        self.delta_index.documents.get(doc_id).is_some()
+        // Verification logic for FSI Filter + volume policy guard.
+        if let Some(doc) = self.delta_index.documents.get(doc_id) {
+            return crate::fs::volumes::is_path_queryable(std::path::Path::new(&doc.path));
+        }
+        false
     }
 }
 

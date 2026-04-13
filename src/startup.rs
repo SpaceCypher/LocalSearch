@@ -1,8 +1,11 @@
 use std::path::Path;
 use anyhow::Result;
+use crate::metrics::InvariantChecker;
 use crate::wal::reader::WalReader;
 use crate::index::signals::SignalDb;
 use std::path::PathBuf;
+use std::io::Read;
+use memmap2::MmapOptions;
 
 // ─── Startup Path Detection ───────────────────────────────────────────────────
 
@@ -80,6 +83,7 @@ pub fn warm_restart(data_dir: &Path) -> Result<()> {
     let wal_path = data_dir.join("wal.log");
     let mut reader = WalReader::new(&wal_path)?;
     let entries = reader.replay_from(0)?;
+    InvariantChecker::check_wal_monotonicity(&entries)?;
     
     log::info!("Warm restart: replayed {} WAL entries", entries.len());
     
@@ -98,9 +102,10 @@ pub fn warm_restart(data_dir: &Path) -> Result<()> {
             plan.hot_terms.len(), plan.hot_paths.len());
 
         for path in plan.hot_paths {
-            // Simulate madvise(MADV_WILLNEED)
-            log::debug!("Advise: MADV_WILLNEED on {}", path);
+            prewarm_path(Path::new(&path))?;
         }
+
+        prewarm_term_hints(data_dir, &plan.hot_terms)?;
     }
     
     // Remove clean shutdown marker (will be recreated on next clean shutdown)
@@ -109,6 +114,67 @@ pub fn warm_restart(data_dir: &Path) -> Result<()> {
         std::fs::remove_file(marker)?;
     }
     
+    Ok(())
+}
+
+fn prewarm_path(path: &Path) -> Result<()> {
+    // Touch metadata to populate vnode/dentry caches.
+    let _ = std::fs::metadata(path);
+
+    if path.is_file() {
+        prewarm_file_pages(path)?;
+    }
+
+    // If the hot path points to a directory, touch a bounded subset of entries.
+    if path.is_dir() {
+        if let Ok(entries) = std::fs::read_dir(path) {
+            for entry in entries.flatten().take(32) {
+                let p = entry.path();
+                let _ = std::fs::metadata(&p);
+                if p.is_file() {
+                    prewarm_file_pages(&p)?;
+                    // Bounded byte touch to encourage page cache residency.
+                    if let Ok(mut f) = std::fs::File::open(&p) {
+                        let mut buf = [0u8; 4096];
+                        let _ = f.read(&mut buf);
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn prewarm_file_pages(path: &Path) -> Result<()> {
+    let file = std::fs::File::open(path)?;
+    let meta = file.metadata()?;
+    if meta.len() == 0 {
+        return Ok(());
+    }
+
+    // Map only a bounded window to avoid large warmup memory spikes.
+    let len = (meta.len() as usize).min(256 * 1024);
+    let mmap = unsafe { MmapOptions::new().len(len).map(&file)? };
+
+    #[cfg(target_os = "macos")]
+    unsafe {
+        let _ = libc::madvise(
+            mmap.as_ptr() as *mut libc::c_void,
+            len,
+            libc::MADV_WILLNEED,
+        );
+    }
+
+    Ok(())
+}
+
+fn prewarm_term_hints(data_dir: &Path, hot_terms: &[String]) -> Result<()> {
+    // Persist hints for future startup phases that can map terms to pages/segments.
+    // This creates a concrete handoff artifact instead of only logging.
+    let hint_path = data_dir.join("warmup_terms.txt");
+    let content = hot_terms.iter().take(500).cloned().collect::<Vec<_>>().join("\n");
+    std::fs::write(hint_path, content)?;
     Ok(())
 }
 
@@ -154,6 +220,7 @@ pub fn crash_recovery(data_dir: &Path) -> Result<()> {
     let wal_path = data_dir.join("wal.log");
     let mut reader = WalReader::new(&wal_path)?;
     let entries = reader.replay_from(0)?;
+    InvariantChecker::check_wal_monotonicity(&entries)?;
     
     log::info!("Crash recovery: replayed {} WAL entries", entries.len());
     
@@ -284,5 +351,47 @@ mod tests {
         
         // Valid segment should still exist
         assert!(valid_segment.exists());
+    }
+
+    #[test]
+    fn test_warm_restart_writes_term_hint_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path();
+
+        std::fs::create_dir_all(data_dir).unwrap();
+        let wal_path = data_dir.join("wal.log");
+        std::fs::write(&wal_path, b"").unwrap();
+        std::fs::write(data_dir.join(".clean_shutdown"), b"").unwrap();
+
+        let signal_db = SignalDb {
+            hot_terms: [("quarterly".to_string(), 10)].into_iter().collect(),
+            hot_paths: std::collections::HashMap::new(),
+        };
+        let signal_path = data_dir.join("signals.json");
+        std::fs::write(&signal_path, serde_json::to_string(&signal_db).unwrap()).unwrap();
+
+        warm_restart(data_dir).unwrap();
+        assert!(data_dir.join("warmup_terms.txt").exists());
+    }
+
+    #[test]
+    fn test_warm_restart_wal_monotonicity_invariant() {
+        let dir = tempfile::tempdir().unwrap();
+        let data_dir = dir.path();
+
+        std::fs::create_dir_all(data_dir).unwrap();
+        let wal_path = data_dir.join("wal.log");
+        {
+            use crate::wal::entry::WalEntry;
+            use crate::wal::writer::WalWriter;
+            let writer = WalWriter::new_with_deadline(&wal_path, std::time::Duration::from_secs(60)).unwrap();
+            for i in 0..5u64 {
+                writer.append(WalEntry { seq: i, ..WalEntry::new_test() }).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+        std::fs::write(data_dir.join(".clean_shutdown"), b"").unwrap();
+
+        assert!(warm_restart(data_dir).is_ok());
     }
 }

@@ -4,6 +4,7 @@ use crate::index::trie::PathTrie;
 use crate::index::trigram::TrigramIndex;
 use crate::query::executor::QueryExecutor;
 use crate::query::parser::{Query, Tokenizer};
+use crate::extract::client::ExtractionClient;
 use crate::query::phonetic::double_metaphone;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
@@ -11,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 use std::time::SystemTime;
+use std::collections::HashMap;
 use walkdir::WalkDir;
 use xxhash_rust::xxh3::xxh3_64;
 
@@ -31,6 +33,7 @@ struct OwnedSearchResult {
 
 const MAX_RESULTS: usize = 100;
 const MAX_SCANNED_ENTRIES: usize = 1_000_000;
+const FALLBACK_MAX_SCANNED_ENTRIES: usize = 60_000;
 const MAX_DEPTH: usize = 8;
 
 struct SearchEngine {
@@ -101,6 +104,39 @@ fn search_roots() -> Vec<PathBuf> {
     }
 
     roots
+}
+
+fn content_hash_cache_path() -> Option<PathBuf> {
+    let home = std::env::var("HOME").ok()?;
+    Some(PathBuf::from(home).join(".localsearch").join("content_hashes.json"))
+}
+
+fn load_content_hash_cache() -> HashMap<String, u64> {
+    let Some(path) = content_hash_cache_path() else {
+        return HashMap::new();
+    };
+
+    if let Ok(content) = std::fs::read_to_string(path) {
+        if let Ok(cache) = serde_json::from_str::<HashMap<String, u64>>(&content) {
+            return cache;
+        }
+    }
+
+    HashMap::new()
+}
+
+fn save_content_hash_cache(cache: &HashMap<String, u64>) {
+    let Some(path) = content_hash_cache_path() else {
+        return;
+    };
+
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+
+    if let Ok(json) = serde_json::to_string(cache) {
+        let _ = std::fs::write(path, json);
+    }
 }
 
 fn component_is_noise(component: &str) -> bool {
@@ -264,7 +300,10 @@ fn build_search_engine() -> Option<SearchEngine> {
     let mut path_trie = PathTrie::new();
     let mut trigram_index = TrigramIndex::new();
     let mut phonetic_index: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let extraction_client = ExtractionClient::new();
     let tokenizer = Tokenizer::new();
+    let previous_hashes = load_content_hash_cache();
+    let mut updated_hashes: HashMap<String, u64> = HashMap::new();
 
     let roots = search_roots();
     let mut scanned = 0usize;
@@ -313,7 +352,16 @@ fn build_search_engine() -> Option<SearchEngine> {
             let mut postings_by_term: std::collections::HashMap<String, (u32, Vec<u32>)> =
                 std::collections::HashMap::new();
 
-            let token_source = format!("{} {}", filename, path_str);
+            let current_hash = ExtractionClient::calculate_content_hash(path).unwrap_or(0);
+            let previous_hash = previous_hashes.get(&path_str).copied();
+            updated_hashes.insert(path_str.clone(), current_hash);
+
+            let mut token_source = format!("{} {}", filename, path_str);
+            if let Ok(Some(extracted)) = extraction_client.extract_if_changed(path, previous_hash) {
+                token_source.push(' ');
+                token_source.push_str(&extracted.text);
+            }
+
             let tokens = tokenizer.tokenize(&token_source);
             for token in tokens {
                 let entry = postings_by_term
@@ -351,7 +399,7 @@ fn build_search_engine() -> Option<SearchEngine> {
             let doc = Document {
                 doc_id,
                 path: path_str.clone(),
-                content_hash: 0,
+                content_hash: current_hash,
             };
             let _ = delta_index.insert_document(doc, postings);
             path_trie.insert(&path_str, doc_id);
@@ -360,6 +408,8 @@ fn build_search_engine() -> Option<SearchEngine> {
             trigram_index.insert(filename, doc_id);
         }
     }
+
+    save_content_hash_cache(&updated_hashes);
 
     Some(SearchEngine {
         executor: QueryExecutor::new(
@@ -404,6 +454,12 @@ fn run_query(query: &str) -> Vec<OwnedSearchResult> {
         return Vec::new();
     }
 
+    // Single-character queries tend to produce very low signal and high scan cost.
+    // Skip them to keep interactive power usage under control.
+    if query_owned.chars().count() < 2 {
+        return Vec::new();
+    }
+
     // Dotted/path-like queries (e.g. "foo.pdf", "src/main.rs") and
     // structured filename queries (e.g. "1_advanced") are better served by
     // direct filename/path matching than token BM25.
@@ -429,12 +485,17 @@ fn run_query(query: &str) -> Vec<OwnedSearchResult> {
     let roots = search_roots();
     let structured_query = query_owned.contains('_');
     let traversal_depth = if structured_query { 4 } else { MAX_DEPTH };
+    let max_scanned = if prefer_fallback {
+        MAX_SCANNED_ENTRIES
+    } else {
+        FALLBACK_MAX_SCANNED_ENTRIES
+    };
 
     let mut results = Vec::new();
     let mut scanned = 0usize;
 
     'roots: for root in roots {
-        if scanned > MAX_SCANNED_ENTRIES {
+        if scanned > max_scanned {
             break;
         }
 
@@ -461,7 +522,7 @@ fn run_query(query: &str) -> Vec<OwnedSearchResult> {
             }
             
             scanned += 1;
-            if scanned > MAX_SCANNED_ENTRIES {
+            if scanned > max_scanned {
                 break;
             }
 
