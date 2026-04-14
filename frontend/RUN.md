@@ -20,32 +20,18 @@ When you launch the app:
 3. **Search Window** - A floating panel with:
    - Search input field at the top (auto-focused)
    - Scope filter buttons (All, Documents, Images, Code, Folders)
-   - Results list (currently using MockBackend with no results)
+   - Results list (driven by FFI backend)
    - Status bar at the bottom
 
 ### Current State
 
 - ✅ Complete UI assembled and functional
-- ✅ All 78 frontend tests passing
-- ✅ MockBackend provides test data
-- ❌ Real backend integration not yet connected (Task F18)
+- ⚠️ Frontend test suite currently has API drift and needs a dedicated test-fix pass
+- ✅ Real backend integration via FFI
 
 ### Testing the UI
 
-The app currently uses `MockBackend` which returns no results by default. To test with mock data, you can modify `SearchWindowController.swift`:
-
-```swift
-// Change this line:
-let viewModel = SearchViewModel(backend: MockBackend())
-
-// To this (with mock results):
-let backend = MockBackend()
-backend.mockResults = [
-    SearchResult(id: "1", filename: "report.pdf", path: "~/Documents/report.pdf", rank: 1.0, fileKind: .document),
-    SearchResult(id: "2", filename: "notes.txt", path: "~/Documents/notes.txt", rank: 0.9, fileKind: .document),
-]
-let viewModel = SearchViewModel(backend: backend)
-```
+The app now uses the FFI backend at runtime. Ensure `liblocalsearch.dylib` is available in one of the standard candidate paths listed in `FFIBackend.swift`, or set `LOCALSEARCH_DYLIB_PATH` explicitly.
 
 ### Keyboard Shortcuts
 
@@ -60,10 +46,8 @@ let viewModel = SearchViewModel(backend: backend)
 
 ### Next Steps
 
-To connect to the real Rust backend:
-1. Complete Task 21 (Backend) - C FFI Layer
-2. Complete Task F18 (Frontend) - XPC Backend Channel
-3. Replace MockBackend with XPCBackendChannel
+1. Expand FFI API surface for advanced filters and progress channels
+2. Add stronger end-to-end integration tests for FFI loading and query results
 
 ### Troubleshooting
 

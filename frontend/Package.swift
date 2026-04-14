@@ -20,6 +20,9 @@ let package = Package(
             name: "LocalSearch",
             dependencies: [],
             path: "Sources",
+            exclude: [
+                "Resources/Info.plist"
+            ],
             resources: [
                 .process("Resources/AppIcon.icns")
             ]

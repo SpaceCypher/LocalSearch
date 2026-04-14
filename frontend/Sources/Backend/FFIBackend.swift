@@ -85,7 +85,7 @@ final class FFIBackend: SearchBackendProtocol {
         }
 
         if !loadErrors.isEmpty {
-            fputs("[LocalSearch] FFI backend unavailable; falling back to MockBackend.\n", stderr)
+            fputs("[LocalSearch] FFI backend unavailable.\n", stderr)
             for err in loadErrors {
                 fputs("[LocalSearch] \(err)\n", stderr)
             }
@@ -104,7 +104,12 @@ final class FFIBackend: SearchBackendProtocol {
         let freeResultsFn = self.freeResultsFn
 
         return AsyncStream<[SearchResult]> { continuation in
-            Task.detached(priority: .userInitiated) {
+            let queryTask = Task(priority: .utility) {
+                if Task.isCancelled {
+                    continuation.finish()
+                    return
+                }
+
                 guard let queryCString = query.cString(using: .utf8) else {
                     continuation.finish()
                     return
@@ -115,6 +120,11 @@ final class FFIBackend: SearchBackendProtocol {
 
                 let status = queryCString.withUnsafeBufferPointer { buffer in
                     queryFn(buffer.baseAddress!, &rawResults, &count)
+                }
+
+                if Task.isCancelled {
+                    continuation.finish()
+                    return
                 }
 
                 guard status == 0 else {
@@ -160,6 +170,10 @@ final class FFIBackend: SearchBackendProtocol {
 
                 continuation.yield(batch)
                 continuation.finish()
+            }
+
+            continuation.onTermination = { _ in
+                queryTask.cancel()
             }
         }
     }

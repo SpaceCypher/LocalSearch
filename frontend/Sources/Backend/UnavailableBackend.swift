@@ -1,35 +1,31 @@
 import Foundation
 
-// MARK: - Mock Backend for Development and Testing
-
-class MockBackend: SearchBackendProtocol {
-    var mockSuggestions: [String] = []
-    
+// Backend used when native FFI backend cannot be loaded.
+final class UnavailableBackend: SearchBackendProtocol {
     func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         AsyncStream { continuation in
+            continuation.yield([])
             continuation.finish()
         }
     }
-    
+
     func systemState() -> AsyncStream<SystemState> {
         AsyncStream { continuation in
-            continuation.yield(.nominal)
+            continuation.yield(.fuzzyPaused)
             continuation.finish()
         }
     }
-    
+
     func indexProgress() -> AsyncStream<IndexProgress?> {
         AsyncStream { continuation in
             continuation.yield(nil)
             continuation.finish()
         }
     }
-    
-    func prefetchPrefix(_ prefix: String) async {
-        // No-op for mock
-    }
-    
+
+    func prefetchPrefix(_ prefix: String) async {}
+
     func spellingSuggestions(for query: String) async -> [String] {
-        return mockSuggestions
+        []
     }
 }

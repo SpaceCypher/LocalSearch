@@ -39,7 +39,7 @@ The frontend is a Swift Package executable that:
 - Presents a Spotlight-like floating panel UI
 - Handles keyboard shortcuts and app/window behavior
 - Calls into Rust through `FFIBackend`
-- Falls back to `MockBackend` if the Rust dylib cannot be loaded
+- Uses `UnavailableBackend` if the Rust dylib cannot be loaded
 
 Backend selection is done in `frontend/Sources/App/LocalSearchApp.swift`.
 
@@ -76,7 +76,7 @@ frontend/.build/release/LocalSearch.app
 
 `frontend/run.sh` builds the Swift app and bundles resources, but it does not build the Rust crate.
 
-If `target/debug/liblocalsearch.dylib` does not exist, the frontend cannot load the real backend and will fall back to mock behavior.
+If `target/debug/liblocalsearch.dylib` does not exist, the frontend cannot load the real backend and will enter unavailable-backend mode.
 
 ## Backend Loading Rules
 
@@ -88,7 +88,7 @@ If `target/debug/liblocalsearch.dylib` does not exist, the frontend cannot load 
 4. `../../target/debug/liblocalsearch.dylib`
 5. repo-root `target/debug/liblocalsearch.dylib` (resolved via source path)
 
-If all fail, app logs indicate fallback to `MockBackend`.
+If all fail, app logs indicate fallback to `UnavailableBackend`.
 
 ## Search Scope Defaults
 
@@ -140,7 +140,7 @@ cargo run -- --debug-panel
 Most common causes:
 
 1. Rust dylib not built or not discoverable
-2. App running with `MockBackend` fallback
+2. App running with `UnavailableBackend` fallback
 3. Querying outside current scan roots
 
 Checks:
