@@ -5,7 +5,7 @@ import XCTest
 final class KeyboardNavigationTests: XCTestCase {
     
     func test_downArrow_movesSelection() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.displayResults = [.mock(rank: 1.0), .mock(rank: 0.9), .mock(rank: 0.8)]
         vm.selectedIndex = 0
         
@@ -15,7 +15,7 @@ final class KeyboardNavigationTests: XCTestCase {
     }
     
     func test_upArrow_clampsAtZero() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.displayResults = [.mock(rank: 1.0)]
         vm.selectedIndex = 0
         
@@ -25,7 +25,7 @@ final class KeyboardNavigationTests: XCTestCase {
     }
     
     func test_rightArrow_expandsMetadata() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         let result = SearchResult.mock(rank: 1.0, id: "A")
         vm.displayResults = [result]
         vm.selectedIndex = 0
@@ -38,7 +38,7 @@ final class KeyboardNavigationTests: XCTestCase {
     }
     
     func test_leftArrow_collapsesMetadata() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.displayResults = [.mock(rank: 1.0)]
         vm.selectedIndex = 0
         vm.expandedResult = vm.displayResults[0]
@@ -49,7 +49,7 @@ final class KeyboardNavigationTests: XCTestCase {
     }
     
     func test_upArrow_emptyQuery_navigatesHistory() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.queryHistory = ["previous query", "older query"]
         vm.queryText = ""
         
@@ -61,7 +61,7 @@ final class KeyboardNavigationTests: XCTestCase {
     }
     
     func test_downArrow_selectsFirstResult_whenNoneSelected() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.displayResults = [.mock(rank: 1.0), .mock(rank: 0.9)]
         vm.selectedIndex = nil
         

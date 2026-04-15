@@ -16,7 +16,44 @@ extension SearchResult {
     }
 }
 
-// MARK: - Mock Backends
+// MARK: - test backends
+
+class FixtureBackend: SearchBackendProtocol {
+    var fixtureSuggestions: [String] = []
+    var fixtureSystemStates: [SystemState] = [.nominal]
+    var fixtureIndexProgress: [IndexProgress?] = [nil]
+
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
+        AsyncStream { continuation in
+            continuation.yield([])
+            continuation.finish()
+        }
+    }
+
+    func systemState() -> AsyncStream<SystemState> {
+        AsyncStream { continuation in
+            for state in fixtureSystemStates {
+                continuation.yield(state)
+            }
+            continuation.finish()
+        }
+    }
+
+    func indexProgress() -> AsyncStream<IndexProgress?> {
+        AsyncStream { continuation in
+            for progress in fixtureIndexProgress {
+                continuation.yield(progress)
+            }
+            continuation.finish()
+        }
+    }
+
+    func prefetchPrefix(_ prefix: String) async {}
+
+    func spellingSuggestions(for query: String) async -> [String] {
+        fixtureSuggestions
+    }
+}
 
 class ImmediateBackend: SearchBackendProtocol {
     let results: [SearchResult]
@@ -25,11 +62,9 @@ class ImmediateBackend: SearchBackendProtocol {
         self.results = results
     }
     
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         AsyncStream { continuation in
-            for result in results {
-                continuation.yield(result)
-            }
+            continuation.yield(results)
             continuation.finish()
         }
     }
@@ -62,11 +97,11 @@ class SlowBackend: SearchBackendProtocol {
         self.delay = delay
     }
     
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         AsyncStream { continuation in
             Task {
                 try? await Task.sleep(for: delay)
-                continuation.yield(.mock(rank: 1.0))
+                continuation.yield([.mock(rank: 1.0)])
                 continuation.finish()
             }
         }
@@ -96,12 +131,15 @@ class SlowBackend: SearchBackendProtocol {
 class TrackingBackend: SearchBackendProtocol {
     var searchCallCount = 0
     var lastQuery: String?
+    var prefetchCallCount = 0
+    var lastPrefetchedPrefix: String?
     
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         searchCallCount += 1
         lastQuery = query
         
         return AsyncStream { continuation in
+            continuation.yield([])
             continuation.finish()
         }
     }
@@ -120,7 +158,10 @@ class TrackingBackend: SearchBackendProtocol {
         }
     }
     
-    func prefetchPrefix(_ prefix: String) async {}
+    func prefetchPrefix(_ prefix: String) async {
+        prefetchCallCount += 1
+        lastPrefetchedPrefix = prefix
+    }
     
     func spellingSuggestions(for query: String) async -> [String] {
         return []

@@ -3,6 +3,8 @@ import AppKit
 
 @MainActor
 class SearchViewModel: ObservableObject {
+    private let minimumSearchLength = 2
+
     // Query state
     @Published var queryText: String = ""
     @Published var queryState: QueryState = .idle
@@ -18,14 +20,24 @@ class SearchViewModel: ObservableObject {
     // Task references for cancellation (F3)
     var debounceTask: Task<Void, Never>?
     var searchTask: Task<Void, Never>?
+    private var systemStateTask: Task<Void, Never>?
+    private var indexProgressTask: Task<Void, Never>?
+    private var slowStateTask: Task<Void, Never>?
+    private var longSearchTask: Task<Void, Never>?
     
     // Prefix cache (F3)
     let prefixCache = PrefixCache()
     
     // F6: QueryFieldView state
     @Published var showSpinner: Bool = false
+    @Published var showSkeletons: Bool = false
+    @Published var isLongSearch: Bool = false
     @Published var parsedFilters: [QueryFilter] = []
     @Published var strippedQueryText: String = ""
+
+    var skeletonCount: Int {
+        3
+    }
     
     var showClearButton: Bool {
         !queryText.isEmpty
@@ -41,7 +53,7 @@ class SearchViewModel: ObservableObject {
         case .searching:
             return "Searching…"
         case .searchingSlow:
-            return "Searching…"
+            return isLongSearch ? "Search is taking longer than usual" : "Searching…"
         case .streaming:
             return "Streaming results…"
         case .complete:
@@ -148,6 +160,16 @@ class SearchViewModel: ObservableObject {
     
     init(backend: SearchBackendProtocol) {
         self.backend = backend
+        startBackendStreams()
+    }
+
+    deinit {
+        debounceTask?.cancel()
+        searchTask?.cancel()
+        systemStateTask?.cancel()
+        indexProgressTask?.cancel()
+        slowStateTask?.cancel()
+        longSearchTask?.cancel()
     }
     
     // MARK: - Query Lifecycle
@@ -163,6 +185,8 @@ class SearchViewModel: ObservableObject {
         // 1. Cancel any pending debounce or search tasks
         debounceTask?.cancel()
         searchTask?.cancel()
+        slowStateTask?.cancel()
+        longSearchTask?.cancel()
         
         // 2. Synchronous: update generation, dim results
         queryGeneration &+= 1
@@ -175,6 +199,8 @@ class SearchViewModel: ObservableObject {
         
         // 4. Update UI state (F6)
         showSpinner = false
+        showSkeletons = false
+        isLongSearch = false
         
         // 5. Handle empty query
         guard !newText.isEmpty else {
@@ -182,6 +208,25 @@ class SearchViewModel: ObservableObject {
             displayResults = []
             selectedIndex = nil
             expandedResult = nil
+            return
+        }
+
+        // Speculative prefix prefetch for first 1-2 typed characters.
+        if newText.count <= 2 {
+            let prefix = String(newText.prefix(2))
+            Task {
+                await backend.prefetchPrefix(prefix)
+            }
+        }
+
+        // Avoid expensive backend work for single-character queries.
+        // This significantly reduces CPU churn while the user is still typing.
+        if strippedQueryText.count < minimumSearchLength {
+            queryState = .typing
+            displayResults = []
+            selectedIndex = nil
+            expandedResult = nil
+            spellingSuggestions = []
             return
         }
         
@@ -329,11 +374,31 @@ class SearchViewModel: ObservableObject {
     
     private func startSearch(query: String, generation: UInt64) async {
         queryState = .searching
+        showSkeletons = false
+        isLongSearch = false
 
         // New query generation should start from a clean result set.
         // This prevents stale rows from previous queries remaining visible.
         displayResults = []
         selectedIndex = nil
+
+        slowStateTask?.cancel()
+        longSearchTask?.cancel()
+        slowStateTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard generation == queryGeneration else { return }
+            guard queryState == .searching else { return }
+            guard displayResults.isEmpty else { return }
+            queryState = .searchingSlow
+            showSkeletons = true
+        }
+
+        longSearchTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard generation == queryGeneration else { return }
+            guard queryState == .searchingSlow else { return }
+            isLongSearch = true
+        }
         
         searchTask = Task { @MainActor in
             let stream = backend.search(
@@ -345,6 +410,12 @@ class SearchViewModel: ObservableObject {
             
             for await batch in stream {
                 guard generation == queryGeneration else { break }
+
+                slowStateTask?.cancel()
+                longSearchTask?.cancel()
+                showSkeletons = false
+                isLongSearch = false
+                queryState = .streaming
                 
                 // Track selected document ID
                 let selectedDocId = selectedIndex.flatMap { displayResults[safe: $0]?.id }
@@ -364,6 +435,8 @@ class SearchViewModel: ObservableObject {
             guard generation == queryGeneration else { return }
             queryState = .complete
             showSpinner = false // Hide spinner when complete
+            showSkeletons = false
+            isLongSearch = false
             
             // Fetch spelling suggestions if zero results (F15)
             if displayResults.isEmpty {
@@ -379,6 +452,20 @@ class SearchViewModel: ObservableObject {
     private func dimCurrentResults() {
         // Opacity dimming is now handled cleanly on the View layer via queryState
         // to prevent extreme SwiftUI array differencing lag.
+    }
+
+    private func startBackendStreams() {
+        systemStateTask = Task { @MainActor in
+            for await state in backend.systemState() {
+                self.systemState = state
+            }
+        }
+
+        indexProgressTask = Task { @MainActor in
+            for await progress in backend.indexProgress() {
+                self.indexProgress = progress
+            }
+        }
     }
 }
 

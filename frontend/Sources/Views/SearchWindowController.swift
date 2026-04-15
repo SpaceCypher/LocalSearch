@@ -282,7 +282,14 @@ struct SearchContentView: View {
                 }
                 
                 // Results or zero-results view
-                if viewModel.displayResults.isEmpty && viewModel.queryState == .complete {
+                if viewModel.showSkeletons {
+                    VStack(spacing: 0) {
+                        ForEach(0..<viewModel.skeletonCount, id: \.self) { _ in
+                            SkeletonResultRowView()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                } else if viewModel.displayResults.isEmpty && viewModel.queryState == .complete {
                     // Zero results state
                     ZeroResultsView(
                         query: viewModel.zeroResultsQuery,

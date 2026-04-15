@@ -27,14 +27,14 @@ class QueryFieldViewTests: XCTestCase {
     }
     
     func test_clearButton_appears_whenQueryNonEmpty() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         XCTAssertFalse(vm.showClearButton)
         vm.queryText = "hello"
         XCTAssertTrue(vm.showClearButton)
     }
     
     func test_clearButton_tap_resetsToIdle() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.queryText = "hello"
         vm.displayResults = [.mock(rank: 1.0)]
         vm.clearQuery()
@@ -44,7 +44,7 @@ class QueryFieldViewTests: XCTestCase {
     }
     
     func test_filterChip_renderedFromParsedQuery() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.onQueryChange("kind:pdf report")
         // Parser extracts kind:pdf as a filter chip
         XCTAssertEqual(vm.parsedFilters.count, 1)

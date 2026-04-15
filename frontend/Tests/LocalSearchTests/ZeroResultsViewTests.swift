@@ -5,7 +5,7 @@ import XCTest
 final class ZeroResultsViewTests: XCTestCase {
     
     func test_zeroResults_showsQuery() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.queryText = "receit"
         vm.queryState = .complete
         vm.displayResults = []
@@ -13,8 +13,8 @@ final class ZeroResultsViewTests: XCTestCase {
     }
     
     func test_zeroResults_showsSpellingSuggestions() async {
-        let backend = MockBackend()
-        backend.mockSuggestions = ["receipt", "recite"]
+        let backend = FixtureBackend()
+        backend.fixtureSuggestions = ["receipt", "recite"]
         let vm = SearchViewModel(backend: backend)
         vm.onQueryChange("receit")
         try? await Task.sleep(nanoseconds: 200_000_000)
@@ -22,13 +22,13 @@ final class ZeroResultsViewTests: XCTestCase {
     }
     
     func test_clickSuggestion_replacesQuery() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.selectSuggestion("receipt")
         XCTAssertEqual(vm.queryText, "receipt")
     }
     
     func test_activeFilters_showsBroadeningTip() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.parsedFilters = [.kind("pdf")]
         vm.queryState = .complete
         vm.displayResults = []
@@ -36,7 +36,7 @@ final class ZeroResultsViewTests: XCTestCase {
     }
     
     func test_degradedZeroResults_showsFuzzyPausedNote() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.systemState = .fuzzyPaused
         vm.queryState = .complete
         vm.displayResults = []

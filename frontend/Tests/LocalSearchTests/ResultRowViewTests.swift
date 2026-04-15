@@ -6,7 +6,7 @@ final class ResultRowViewTests: XCTestCase {
     
     func test_rowHeight_standard_is56() {
         let result = SearchResult.mock(rank: 1.0)
-        let row = ResultRowView(result: result, isSelected: false)
+        let row = ResultRowView(result: result, isSelected: false, isTopHit: false)
         // View has fixed height of 56
         XCTAssertNotNil(row)
     }
@@ -20,7 +20,7 @@ final class ResultRowViewTests: XCTestCase {
             rank: 1.0,
             fileKind: .document
         )
-        let row = ResultRowView(result: result, isSelected: false)
+        let row = ResultRowView(result: result, isSelected: false, isTopHit: false)
         
         // Should truncate in the middle
         let display = row.displayFilename
@@ -39,7 +39,7 @@ final class ResultRowViewTests: XCTestCase {
             rank: 1.0,
             fileKind: .document
         )
-        let row = ResultRowView(result: result, isSelected: false)
+        let row = ResultRowView(result: result, isSelected: false, isTopHit: false)
         
         XCTAssertTrue(row.displayPath.hasPrefix("~/"))
         XCTAssertFalse(row.displayPath.contains(homeDir))
@@ -54,7 +54,7 @@ final class ResultRowViewTests: XCTestCase {
             rank: 1.0,
             fileKind: .document
         )
-        let row = ResultRowView(result: result, isSelected: false)
+        let row = ResultRowView(result: result, isSelected: false, isTopHit: false)
         
         // Should left-truncate long paths
         if longPath.count > 60 {
@@ -64,19 +64,19 @@ final class ResultRowViewTests: XCTestCase {
     
     func test_revokedPermission_showsLockIcon() {
         let result = SearchResult.mock(rank: 1.0, permissionState: .revoked)
-        let row = ResultRowView(result: result, isSelected: false)
+        let row = ResultRowView(result: result, isSelected: false, isTopHit: false)
         XCTAssertTrue(row.showsLockIcon)
         XCTAssertEqual(row.iconOpacity, 0.6)
     }
     
     func test_revokedPermission_pathRowReplacedWithDeniedLabel() {
         let result = SearchResult.mock(rank: 1.0, permissionState: .revoked)
-        let row = ResultRowView(result: result, isSelected: false)
+        let row = ResultRowView(result: result, isSelected: false, isTopHit: false)
         XCTAssertEqual(row.pathRowText, "Permission denied")
     }
     
     func test_revokedPermission_enterKey_showsSystemSettingsAlert() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         let alerter = MockAlerter()
         vm.alerter = alerter
         vm.displayResults = [.mock(rank: 1.0, permissionState: .revoked)]
