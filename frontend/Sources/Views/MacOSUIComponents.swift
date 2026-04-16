@@ -2,14 +2,14 @@ import SwiftUI
 
 // MARK: - Constants
 enum MacOSDesign {
-    static let glassBG = Color(white: 0.1, opacity: 0.72)
-    static let glassBorder = Color.white.opacity(0.18)
-    static let sectionBG = Color.white.opacity(0.045)
-    static let sectionBorder = Color.white.opacity(0.12)
-    static let separator = Color.white.opacity(0.06)
-    static let textPrimary = Color.white.opacity(0.85)
-    static let textSecondary = Color.white.opacity(0.40)
-    static let textTertiary = Color.white.opacity(0.30)
+    static let glassBG = Color.black.opacity(0.78)
+    static let glassBorder = Color.white.opacity(0.12)
+    static let sectionBG = Color.black.opacity(0.32)
+    static let sectionBorder = Color.white.opacity(0.08)
+    static let separator = Color.white.opacity(0.045)
+    static let textPrimary = Color.white.opacity(0.92)
+    static let textSecondary = Color.white.opacity(0.58)
+    static let textTertiary = Color.white.opacity(0.42)
     
     // Apple System Green for Toggles
     static let systemGreen = Color(red: 48/255, green: 209/255, blue: 88/255)

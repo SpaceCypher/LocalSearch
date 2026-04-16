@@ -29,14 +29,16 @@ func makeBackend() -> SearchBackendProtocol {
         return ffi
     }
 
-    fputs("[LocalSearch] Using MockBackend fallback.\n", stderr)
-    return MockBackend()
+    fputs("[LocalSearch] FFI backend unavailable; using UnavailableBackend.\n", stderr)
+    return UnavailableBackend()
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     static private(set) var shared: AppDelegate!
+    private let hasSeenWelcomeKey = "hasSeenWelcome"
     
     var windowController: SearchWindowController?
+    var welcomeWindowController: WelcomeWindowController?
     var statusItem: NSStatusItem?
     private var cancellables = Set<AnyCancellable>()
 
@@ -79,9 +81,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.dockTile.display()
 
         windowController = SearchWindowController()
-        
-        // Show immediately for testing
-        windowController?.window?.makeKeyAndOrderFront(nil)
+
+        // Show onboarding only on first run, otherwise keep existing startup behavior.
+        if !UserDefaults.standard.bool(forKey: hasSeenWelcomeKey) {
+            showWelcomeFlow()
+        } else {
+            windowController?.window?.makeKeyAndOrderFront(nil)
+        }
         
         // Wire up HotkeyManager to window controller (F5)
         if let controller = windowController {
@@ -89,6 +95,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         HotkeyManager.shared.register()
+    }
+
+    private func showWelcomeFlow() {
+        welcomeWindowController = WelcomeWindowController { [weak self] in
+            guard let self else { return }
+            UserDefaults.standard.set(true, forKey: self.hasSeenWelcomeKey)
+            self.welcomeWindowController?.close()
+            self.welcomeWindowController = nil
+            self.windowController?.showWindow(nil)
+        }
+        welcomeWindowController?.show()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

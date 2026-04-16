@@ -15,18 +15,30 @@ struct SettingsView: View {
     var body: some View {
         ZStack {
             // Deep Dark Base Layer
-            Color.black.opacity(0.85)
+            Color.black.opacity(0.95)
                 .ignoresSafeArea()
             
             // Background Vibrancy
-            VisualEffectView(material: .hudWindow, blendingMode: NSVisualEffectView.BlendingMode.behindWindow)
+            VisualEffectView(material: .underWindowBackground, blendingMode: NSVisualEffectView.BlendingMode.withinWindow)
                 .ignoresSafeArea()
-                .opacity(0.9) // Slightly mute the vibrancy effect to maintain darkness
+                .opacity(0.55)
+            
+            // Dark depth pass
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.42), location: 0),
+                    .init(color: Color.black.opacity(0.26), location: 0.4),
+                    .init(color: Color.black.opacity(0.46), location: 1)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
             
             // Gloss Sheen
             LinearGradient(
                 stops: [
-                    .init(color: Color.white.opacity(0.07), location: 0),
+                    .init(color: Color.white.opacity(0.035), location: 0),
                     .init(color: .clear, location: 0.6)
                 ],
                 startPoint: .topLeading,
@@ -109,7 +121,7 @@ struct SettingsView: View {
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 6)
-                                .background(settings.accentColor.color.opacity(0.85))
+                                .background(settings.accentColor.color)
                                 .cornerRadius(7)
                         }
                         .buttonStyle(.plain)
@@ -119,7 +131,7 @@ struct SettingsView: View {
                     }
                     .padding(.horizontal, 18)
                     .padding(.vertical, 12)
-                    .background(Color.black.opacity(0.12))
+                    .background(Color.black.opacity(0.42))
                 }
             }
         }
@@ -129,6 +141,7 @@ struct SettingsView: View {
                 .stroke(MacOSDesign.glassBorder, lineWidth: 0.5)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14))
+        .preferredColorScheme(.dark)
         .onChange(of: settings.displayMode) { _, _ in
             AppDelegate.shared.updateDisplayMode()
         }

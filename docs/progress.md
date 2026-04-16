@@ -16,11 +16,10 @@
 
 | Metric | Value |
 |---|---|
-| Tasks complete | 31 / 46 (backend) + 18 / 22 (frontend) |
-| Tests written | 101 (backend) + 78 (frontend) = 179 |
-| Tests passing | 179 / 179 |
-| Commits | 60 |
-| Last updated | 2026-04-08 |
+| Backend status | Tasks 31-45 complete; Task 46 partial (manual/policy gates pending) |
+| Frontend status | Runtime + unit test suite stable; spec-level gaps remain (F18/F20/F21/F22) |
+| Test status | `cargo test` passing; `cd frontend && swift test` passing (76/76) |
+| Last updated | 2026-04-14 |
 
 ---
 
@@ -463,10 +462,10 @@
 | F15 | Zero-Result State + Spelling Suggestions | BK-tree spelling suggestions, degraded-mode explanation |
 | F16 | Permission-Denied Result Row | Lock icon, inline label, system settings alert |
 | F17 | Accessibility | VoiceOver labels, live region status bar, reduce motion |
-| F18 | Backend Protocol + XPC Channel | XPC channel to Rust engine, AsyncStream bridge, auto-reconnect |
+| F18 | Backend Protocol + FFI Channel | Direct Rust dylib bridge, AsyncStream batch results, unavailable-backend fallback |
 | F19 | Prefix Cache (UI-Side Mirror) | LRU 8MB, prefix substring match, speculative prefetch |
 | F20 | Slow Backend + Skeleton State | 150ms threshold, max 3, stale-results exclusion |
-| F21 | Integration Test — Full Search Flow | End-to-end with MockBackend |
+| F21 | Integration Test — Full Search Flow | End-to-end with FixtureBackend |
 | F22 | Accessibility Audit + Reduce Motion Hardening | XCUITest VoiceOver navigation audit |
 
 ---
@@ -1085,7 +1084,7 @@
 - `cargo check` → ✅
 - `cargo build` → ✅
 - `nm -g target/debug/liblocalsearch.dylib | grep -E "localsearch_query|localsearch_free_results"` → ✅ symbols exported
-- `swift test` → ✅ 78/78 passing
+- `swift test` → ✅ currently 76/76 passing
 
 **Key design notes:**
 - ABI now matches `implementation_spec.md §13.3` and Task 21 plan contract
@@ -1093,15 +1092,33 @@
 
 ---
 
-## Upcoming (Backend - On Hold) (Frontend)
+## Remaining Work (Verified 2026-04-14)
 
-| # | Task | Key implementation |
-|---|---|---|
-| 22 | Suffix Array | O(log n) substring search + rebuild-window fallback |
-| 29 | Production Checklist | All chaos scenarios as CI gates |
-| 28 | Index-Disk Parity Test | `tests/parity.rs` — catches silent index divergence |
-| 29 | Production Checklist | All chaos scenarios as CI gates |
-| 30–46 | Advanced features | N-gram, Phonetic, Prefix Cache, ResultProvider, Thread Registry, Fault Injector, Security/TCC, External Volumes, Spotlight Fallback, Benchmarks, Health Dashboard, Signal DB |
+### Backend
+
+- Task 46 remains partial: manual/policy production gates still need evidence artifacts.
+- Remaining Task 46 gates:
+  - Shadow ranking threshold evidence persisted as report artifact
+  - 1-hour memory budget run evidence
+  - kill -9 mid-compaction restart validation report
+  - native TCC revocation event path validation beyond polling watcher
+  - external/network mount live notification integration validation
+
+### Frontend
+
+- F18 resolved by architecture decision: frontend transport is FFI-first (not XPC).
+- System streams declared but not wired in VM startup flow:
+  - `systemState()` stream subscription
+  - `indexProgress()` stream subscription
+- Prefix prefetch not invoked from query typing path (`prefetchPrefix` is declared but no call site in frontend sources).
+- F20 partial: `searchingSlow` state exists, but skeleton row implementation/spec behavior remains incomplete.
+- F21 pending: integration test file for full search flow is not present.
+- F22 pending: UI accessibility audit test target/file is not present.
+
+### Notes
+
+- Unit test suite currently passes after API-alignment fixes.
+- No `MockBackend` usage remains in runtime source path; fallback backend is `UnavailableBackend`.
 
 ---
 
