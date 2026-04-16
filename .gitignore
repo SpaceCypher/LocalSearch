@@ -16,3 +16,4 @@ frontend/.build/
 
 # Temp images
 image.png
+.snapback/
