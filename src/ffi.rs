@@ -341,6 +341,11 @@ fn build_search_engine() -> Option<SearchEngine> {
                 break;
             }
 
+            // Yield to avoid 100% CPU lock on the warmup background thread
+            if scanned % 200 == 0 {
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+
             let Some(filename) = path.file_name().and_then(|n| n.to_str()) else {
                 continue;
             };
@@ -486,13 +491,15 @@ fn run_query(query: &str) -> Vec<OwnedSearchResult> {
     let structured_query = query_owned.contains('_');
     let traversal_depth = if structured_query { 4 } else { MAX_DEPTH };
     let max_scanned = if prefer_fallback {
-        MAX_SCANNED_ENTRIES
+        50_000 // Highly reduced from 1_000_000 for interactive query responsiveness
     } else {
-        FALLBACK_MAX_SCANNED_ENTRIES
+        10_000 // Reduced from 60_000
     };
 
     let mut results = Vec::new();
     let mut scanned = 0usize;
+    let query_start = std::time::Instant::now();
+    let max_duration = std::time::Duration::from_millis(150);
 
     'roots: for root in roots {
         if scanned > max_scanned {
@@ -524,6 +531,10 @@ fn run_query(query: &str) -> Vec<OwnedSearchResult> {
             scanned += 1;
             if scanned > max_scanned {
                 break;
+            }
+            
+            if scanned % 1000 == 0 && query_start.elapsed() > max_duration {
+                break 'roots;
             }
 
             let score = score_candidate(path, &query_owned, &query_tokens);

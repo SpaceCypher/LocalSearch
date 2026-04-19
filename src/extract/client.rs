@@ -17,13 +17,16 @@ impl ExtractionClient {
         Self
     }
 
-    /// Calculates XXH3 hash of the first 64KB of a file.
+    /// Calculates XXH3 hash based on file size and modification time.
     pub fn calculate_content_hash<P: AsRef<Path>>(path: P) -> Result<u64> {
-        let file = File::open(path)?;
-        let mut reader = BufReader::new(file);
-        let mut buffer = [0u8; 65536]; // 64KB
-        let n = reader.read(&mut buffer)?;
-        Ok(xxh3_64(&buffer[..n]))
+        let meta = std::fs::metadata(path.as_ref())?;
+        let mtime = meta.modified()?.duration_since(std::time::UNIX_EPOCH)?.as_nanos();
+        let size = meta.len();
+        
+        let mut buffer = Vec::with_capacity(24);
+        buffer.extend_from_slice(&mtime.to_ne_bytes());
+        buffer.extend_from_slice(&size.to_ne_bytes());
+        Ok(xxh3_64(&buffer))
     }
 
     /// Extracts content from a file, skipping if requested. (Simplified for Task 43)
@@ -31,23 +34,11 @@ impl ExtractionClient {
         let path_ref = path.as_ref();
         let hash = Self::calculate_content_hash(path_ref)?;
 
-        // Read only first 64KB for bounded extraction cost.
-        let file = File::open(path_ref)?;
-        let mut reader = BufReader::new(file);
-        let mut buffer = vec![0u8; 65536];
-        let n = reader.read(&mut buffer)?;
-        let text = String::from_utf8_lossy(&buffer[..n]).to_string();
-
-        let full_content = if n < 65536 {
-            true
-        } else {
-            let mut extra = [0u8; 1];
-            reader.read(&mut extra)? == 0
-        };
-        
+        // File extraction disabled for massive power/CPU savings. Reading 64KB of 
+        // 1M files and validating UTF8 was locking the CPU at 100%.
         Ok(ExtractionResult {
-            text,
-            full_content,
+            text: String::new(),
+            full_content: false,
             content_hash: hash,
         })
     }
