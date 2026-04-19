@@ -10,6 +10,7 @@ class FloatingPanel: NSPanel {
 class SearchWindowController: NSWindowController, WindowControllerProtocol {
     private var cancellables = Set<AnyCancellable>()
     private var localEventMonitor: Any?
+    private var viewModel: SearchViewModel?
 
     private let compactHeight: CGFloat = 92
     private let maxExpandedHeight: CGFloat = 564
@@ -25,8 +26,8 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
             backing: .buffered,
             defer: false
         )
-        
-        // Configure panel behavior
+        // ... (rest of init setup)
+        // Set up the rest of the configuration keeping the existing code unchanged
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.level = .floating
@@ -76,6 +77,7 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         panel.contentView = visualEffectView
         
         self.init(window: panel)
+        self.viewModel = viewModel
         
         bindWindowSizing(panel: panel, viewModel: viewModel)
         setupEventMonitor(viewModel: viewModel)
@@ -185,15 +187,11 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         // Keep top edge fixed so the panel expands downward like Spotlight.
         next.origin.y -= heightDelta
         
-        // When width changes, animate left/right depending on center pivot?
-        // To keep the left side pinned:
-        // (Nothing needed, standard origin expands rightwards)
-
         panel.setFrame(next, display: true, animate: true)
     }
     
     func handleEscapeKey() {
-        window?.orderOut(nil)
+        self.hideWindow()
     }
     
     deinit {
@@ -223,6 +221,7 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
 
     @objc func hideWindow() {
         window?.orderOut(nil)
+        viewModel?.queryText = ""
         
         // Notify delegate to update activation policy (to hide dock if in menuBar mode)
         if let appDelegate = NSApp.delegate as? AppDelegate {
