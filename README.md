@@ -156,30 +156,30 @@ LocalSearch against Spotlight on the same three folders (59,658 items), Apple M3
 
 | Query | LocalSearch | Spotlight, names only | Spotlight, names + contents |
 |---|--:|--:|--:|
-| `report` | 12.4 | 157 | 157 |
-| `test` | 8.1 | 13.9 | 16.4 |
-| `config` | 9.9 | 14.0 | 163 |
-| `screenshot` | 2.3 | 150 | 155 |
-| `re` (two letters) | 10.7 | **3.0** | **3.4** |
-| `README.md` | 3.0 | 15.5 | 32.4 |
-| `index.html` | 3.4 | 152 | 1543 |
-| `meeting notes` | 13.4 | 175 | 182 |
-| `function` (content word) | 5.2 | 13.2 | 166 |
-| `zebrafish` (rare word) | 1.5 | 147 | 149 |
-| `reprot` (typo) | 4.6 | 150 | 153 |
-| **Middle of all 19 queries** | **6.9** | **150** | **159** |
+| `report` | 12.4 | 159 | 159 |
+| `test` | 7.9 | 13.6 | 16.9 |
+| `config` | 8.9 | 15.0 | 168 |
+| `screenshot` | 1.2 | 152 | 156 |
+| `re` (two letters) | 10.6 | **3.1** | **3.3** |
+| `README.md` | 4.0 | 15.4 | 31.6 |
+| `index.html` | 2.9 | 155 | 1563 |
+| `meeting notes` | 14.1 | 181 | 186 |
+| `function` (content word) | 4.7 | 13.5 | 170 |
+| `zebrafish` (rare word) | 1.5 | 152 | 154 |
+| `reprot` (typo) | 5.4 | 153 | 155 |
+| **Middle of all 19 queries** | **6.6** | **152** | **158** |
 
 LocalSearch is faster on 18 of the 19 queries; Spotlight wins on the two-letter prefix.
 
 | | LocalSearch |
 |---|--:|
-| Slowest query (median) | 13.4 ms |
-| Worst query while recent changes are merged into the index | 20 ms |
-| New file becomes findable | 0.39 s (Spotlight: about 1.9 s in two earlier runs) |
-| First index, names searchable | 6.6 s |
-| First index, names and contents | 67.2 s |
+| Slowest query (median) | 14.1 ms |
+| Worst query while recent changes are merged into the index | 89 ms (20 ms in two earlier runs) |
+| New file becomes findable | 0.46 s (Spotlight: about 1.9 s in two earlier runs) |
+| First index, names searchable | 3.3 s |
+| First index, names and contents | 67.9 s |
 | File contents indexed (text, code, PDF, Word/RTF) | 100% |
-| Memory with the index loaded | 112 MB |
+| Memory with the index loaded | 54 MB |
 | Index on disk | 22 MB |
 | Loading the index at launch | 1.2 s |
 
@@ -189,7 +189,7 @@ What these numbers do not say:
 - Spotlight covers the whole disk and many more file types, needs no index build by the user, and costs the app no memory. LocalSearch here covers three folders.
 - The two interpret queries differently: for several words LocalSearch matches any of them, the Spotlight queries require all; LocalSearch also returns approximate matches for typos, where Spotlight matches literally.
 - Ranking quality is not measured.
-- In the first of four runs, one LocalSearch query took about 10 s once. It has not recurred and the cause was not identified.
+- In the first of six runs, one LocalSearch query took about 10 s once. It has not recurred and the cause was not identified.
 
 Full tables, method and per-run notes are in [`docs/benchmarks/spotlight.md`](docs/benchmarks/spotlight.md). Reproduce with:
 
