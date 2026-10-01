@@ -129,6 +129,14 @@ struct SettingsView: View {
         }
     }
     
+    /// Version and build as stamped into the bundle by scripts/package.sh
+    static var versionText: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "development build"
+        guard let build = info?["CFBundleVersion"] as? String else { return version }
+        return "Version \(version) (\(build))"
+    }
+    
     private var footerNote: String {
         switch activeTab {
         case .indexing: return "Changes are saved and applied as you make them"
@@ -520,7 +528,7 @@ struct SettingsView: View {
             VStack(spacing: 4) {
                 Text("LocalSearch")
                     .font(.system(size: 18, weight: .bold))
-                Text("Version 1.0 (Build 1)")
+                Text(Self.versionText)
                     .font(.system(size: 12))
                     .foregroundColor(MacOSDesign.textSecondary)
             }

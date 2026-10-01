@@ -24,11 +24,15 @@ Top-level folders you will use most often:
 
 `src/engine.rs` is the live engine. It owns the index and ties the other modules together:
 
-- **Indexing** (`fs/`, `extract/`): walks the configured folders, indexes names, then extracts and indexes file contents (plain text, source code, and PDFs via PDFKit). PDFs are parsed in the `localsearch-extractor` helper process (`extractor-xpc/`), so a parser crash or hang costs one file, not the app.
+- **Indexing** (`fs/`, `extract/`): walks the configured folders, indexes names, then extracts and indexes file contents: plain text, source code, PDFs (PDFKit), and Word, RTF and OpenDocument files (AppKit importers). PDFs and documents are parsed in the `localsearch-extractor` helper process (`extractor-xpc/`), which sandboxes itself (no network, no file writes) before reading anything, so a parser crash, hang or exploit costs one file, not the app.
 - **Persistence** (`index/segment.rs`, `wal/`, `fs/identity.rs`): the index is snapshotted to a checksummed segment file; filesystem changes since the snapshot are logged to a write-ahead log and replayed on the next start; SQLite maps files to stable document IDs.
 - **Live updates** (`fs/events.rs`): FSEvents drive incremental updates while the app runs. A reconcile walk on start picks up anything that changed while it was not running.
 - **Queries** (`query/`): answered from memory — BM25 over names and content (calibrated from the real corpus), typo and phonetic tolerance, filename matching, and a boost for files opened before. Spotlight (`mdfind`) is consulted only while the first index is still being built.
 - **C ABI** (`ffi.rs`): `localsearch_query`, `localsearch_free_results`, `localsearch_record_click`, `localsearch_configure`, `localsearch_index_status`, `localsearch_shutdown`.
+
+**Failure policy.** Nothing in the engine may take the app down: panics are caught at the FFI boundary, the indexer restarts itself after a panic, locks are taken poison-tolerantly, and an unreadable or old-format snapshot is rebuilt from the filesystem rather than trusted. Only one process writes an index at a time; a second one searches the saved index read-only.
+
+**Privacy.** The index holds the names and words of your files. It lives in `~/.localsearch`, readable only by you (mode 0700), and nothing is sent anywhere.
 
 The crate is built as both `rlib` and `cdylib` (see `Cargo.toml`), and the Swift app loads the `cdylib`.
 
@@ -67,13 +71,18 @@ This builds the Rust engine and helper in release mode, builds the Swift app, as
 scripts/package.sh
 ```
 
-produces a self-contained `dist/LocalSearch.app` with the engine in `Contents/Frameworks` and the extractor helper in `Contents/MacOS`. By default it is ad-hoc signed, which is enough to run on the Mac that built it. To sign for distribution:
+produces a self-contained `dist/LocalSearch.app` (engine in `Contents/Frameworks`, extractor helper in `Contents/MacOS`) and `dist/LocalSearch-<version>.zip`. The version comes from `Cargo.toml`; the build number is the commit count. By default the app is ad-hoc signed, which is enough to run on the Mac that built it.
+
+To distribute it, sign with a Developer ID and notarize:
 
 ```bash
-CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" scripts/package.sh
+xcrun notarytool store-credentials localsearch --apple-id you@example.com --team-id TEAMID   # once
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" NOTARY_PROFILE=localsearch scripts/package.sh
 ```
 
-Notarization is not automated.
+The notarization path has not been exercised yet (it needs an Apple Developer account).
+
+CI (`.github/workflows/ci.yml`) runs the Rust and Swift tests on macOS and uploads an ad-hoc signed build.
 
 ## Backend Loading Rules
 
@@ -89,6 +98,8 @@ Defaults: `~/Downloads`, `~/Documents` and `~/Desktop`, 12 levels deep, skipping
 
 Change this in **Settings → Indexing** (folders, skipped names, depth, content on/off). Changes apply to the running app.
 
+Contents are read from text and source files, PDFs, and Word/RTF/OpenDocument files (the first 64 KB of text in each). Spreadsheets, presentations, images and mail are indexed by name only.
+
 File contents stop being indexed once the in-memory index reaches its budget (256 MB by default, `memory_budget_mb` in `config.json`); names are always indexed. Settings shows when the limit was reached.
 
 Environment overrides, mainly for development:
@@ -102,6 +113,11 @@ Environment overrides, mainly for development:
 - `kind:pdf` or `kind:image` — only that file type or kind
 - `in:projects` — only inside folders whose path contains the word
 - `-draft` — leave out names containing the word
+- `after:2025-01-31`, `before:2025-06` — by modification date (`YYYY`, `YYYY-MM` or `YYYY-MM-DD`)
+- `size:>10mb`, `size:<500kb` — by file size
+- `tag:work` — files with that Finder tag
+
+Misspellings are tolerated: if what you typed finds fewer than five results, the closest approximate matches are shown as well.
 
 ## Development Workflows
 
@@ -118,6 +134,12 @@ cargo test --workspace
 cd frontend
 swift build
 swift test
+```
+
+To review the UI without launching the app, render its main states to PNG files:
+
+```bash
+LOCALSEARCH_UI_SNAPSHOTS=/tmp/localsearch-ui swift test --filter UISnapshotTests
 ```
 
 ### Command line
@@ -143,6 +165,14 @@ It builds its own index in a temporary directory, takes several minutes, and rep
 ### The panel says "Search isn't available"
 
 The engine library was not found. Run `frontend/run.sh` (or `cargo build --release`) and relaunch.
+
+### The index stopped updating
+
+If two copies of LocalSearch run at once (for example the app and `localsearch index`), the second one logs that the index is in use and only searches what the first has saved. Quit the other copy.
+
+To start over, quit the app and delete `~/.localsearch`; the index is rebuilt on the next launch.
+
+Set `RUST_LOG=info` (or `debug`) in the app's environment to see engine logs, including a per-stage breakdown of any query slower than 250 ms.
 
 ### A file is not found
 
