@@ -24,6 +24,14 @@
     <string>AppIcon</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSDesktopFolderUsageDescription</key>
+    <string>LocalSearch indexes the names and contents of files on your Desktop so you can search them. The index stays on this Mac.</string>
+    <key>NSDocumentsFolderUsageDescription</key>
+    <string>LocalSearch indexes the names and contents of files in Documents so you can search them. The index stays on this Mac.</string>
+    <key>NSDownloadsFolderUsageDescription</key>
+    <string>LocalSearch indexes the names and contents of files in Downloads so you can search them. The index stays on this Mac.</string>
+    <key>NSRemovableVolumesUsageDescription</key>
+    <string>LocalSearch indexes folders you add on external drives so you can search them. The index stays on this Mac.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026. All rights reserved.</string>
     <key>NSPrincipalClass</key>

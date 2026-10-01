@@ -129,7 +129,7 @@ final class ResultRowViewTests: XCTestCase {
         
         vm.queryText = "otter"
         vm.onQueryChange("otter")
-        try await Task.sleep(nanoseconds: 300_000_000)
+        await waitUntil { !vm.snippets.isEmpty && vm.snippets["stale"] == nil }
         
         XCTAssertEqual(vm.snippets.keys.sorted(), ["content-hit"])
         XCTAssertEqual(vm.snippets["content-hit"].map(SnippetFormatter.plain), "the otter line")
@@ -137,5 +137,19 @@ final class ResultRowViewTests: XCTestCase {
         vm.queryText = ""
         vm.onQueryChange("")
         XCTAssertTrue(vm.snippets.isEmpty)
+    }
+
+    func test_pathLine_showsContainingFolder_notTheNameAgain() {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        func row(_ path: String) -> ResultRowView {
+            ResultRowView(
+                result: SearchResult(id: "x", filename: (path as NSString).lastPathComponent, path: path, rank: 1, fileKind: .document),
+                isSelected: false, isTopHit: false
+            )
+        }
+        XCTAssertEqual(row(home + "/Documents/Work/plan.md").pathRowText, "~/Documents/Work")
+        XCTAssertEqual(row(home + "/plan.md").pathRowText, "~")
+        XCTAssertEqual(row("/Volumes/Archive/2024/plan.md").pathRowText, "/Volumes/Archive/2024")
+        XCTAssertEqual(row("/plan.md").pathRowText, "/")
     }
 }

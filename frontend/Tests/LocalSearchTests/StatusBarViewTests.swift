@@ -27,7 +27,7 @@ final class StatusBarViewTests: XCTestCase {
         vm.queryState = .complete
         vm.queryText = "receit"
         vm.displayResults = []
-        XCTAssertEqual(vm.statusText, "No results for \"receit\"")
+        XCTAssertEqual(vm.statusText, "No results")
     }
 
     func test_idlePanel_hidesStatusBar_unlessThereIsSomethingToReport() {

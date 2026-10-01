@@ -94,7 +94,19 @@ struct ResultRowView: View {
         if result.permissionState == .revoked {
             return "Permission denied"
         }
-        return displayPath
+        return displayFolder
+    }
+    
+    /// Where the file lives. The name is already on the line above, so the
+    /// row shows the containing folder, with `~` for the home directory. Long
+    /// paths are shortened from the left by SwiftUI (`truncationMode(.head)`),
+    /// keeping the nearest folders visible.
+    var displayFolder: String {
+        let folder = (result.path as NSString).deletingLastPathComponent
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if folder == home { return "~" }
+        if folder.hasPrefix(home + "/") { return "~" + folder.dropFirst(home.count) }
+        return folder.isEmpty ? "/" : folder
     }
     
     var accessibilityLabel: String {

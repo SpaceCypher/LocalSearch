@@ -134,16 +134,20 @@ struct QueryParser {
             }
         }
         
-        // Pattern for -word (negation)
-        let excludePattern = #"-(\w+)"#
-        var searchRange = remainingText.startIndex..<remainingText.endIndex
-        while let match = remainingText.range(of: excludePattern, options: .regularExpression, range: searchRange) {
-            let token = String(remainingText[match])
-            let term = String(token.dropFirst()) // Remove the '-'
-            filters.append(.exclude(term))
-            remainingText = remainingText.replacingOccurrences(of: token, with: "", options: [], range: match)
-            searchRange = match.lowerBound..<remainingText.endIndex
+        // -word (negation). Only a hyphen that starts a word excludes: the one
+        // in "my-file" or "LocalSearch-master" is part of the name being searched.
+        var kept: [String] = []
+        for token in remainingText.components(separatedBy: .whitespaces) where !token.isEmpty {
+            let term = token.dropFirst()
+            let isExclusion = token.hasPrefix("-") && !term.isEmpty
+                && term.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+            if isExclusion {
+                filters.append(.exclude(String(term)))
+            } else {
+                kept.append(token)
+            }
         }
+        remainingText = kept.joined(separator: " ")
         
         // Clean up remaining text
         let cleanedText = remainingText

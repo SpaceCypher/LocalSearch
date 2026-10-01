@@ -51,7 +51,8 @@ class SearchViewModel: ObservableObject {
             if backendUnavailableReason != nil {
                 return "Search engine not loaded"
             } else if displayResults.isEmpty {
-                return "No results for \"\(queryText)\""
+                // The panel itself says what was searched for and why nothing matched
+                return "No results"
             } else {
                 let count = displayResults.count
                 return "\(count) result\(count == 1 ? "" : "s")"

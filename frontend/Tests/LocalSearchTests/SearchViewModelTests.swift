@@ -29,7 +29,7 @@ final class SearchViewModelTests: XCTestCase {
         
         vm.queryText = "new"
         vm.onQueryChange("new")
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await waitUntil { vm.queryState == .complete }
         
         XCTAssertEqual(vm.displayResults.map(\.id), ["A", "B"])
         XCTAssertEqual(vm.selectedIndex, 0)
@@ -42,7 +42,7 @@ final class SearchViewModelTests: XCTestCase {
         
         vm.queryText = "nothing"
         vm.onQueryChange("nothing")
-        try await Task.sleep(nanoseconds: 200_000_000)
+        await waitUntil { vm.queryState == .complete }
         
         XCTAssertTrue(vm.displayResults.isEmpty)
         XCTAssertNil(vm.selectedIndex)
@@ -90,8 +90,7 @@ final class SearchViewModelTests: XCTestCase {
         // Before debounce: no search issued
         XCTAssertEqual(backend.searchCallCount, 0)
 
-        // Comfortably past the 80ms debounce (a tight margin fails on a busy machine)
-        try await Task.sleep(nanoseconds: 250_000_000)
+        await waitUntil { backend.searchCallCount > 0 }
         XCTAssertEqual(backend.searchCallCount, 1)
     }
 
@@ -202,6 +201,52 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertFalse(request.matches(path: "/Users/me/Documents/tax draft.pdf"))
         
         XCTAssertTrue(SearchRequest(query: "logo kind:image").matches(path: "/tmp/logo.PNG"))
+    }
+    
+    func test_searchRequest_dateFilters_useModificationDate() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        try Data("x".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let march = Calendar.current.date(from: DateComponents(year: 2024, month: 3, day: 15))!
+        try FileManager.default.setAttributes([.modificationDate: march], ofItemAtPath: url.path)
+        
+        XCTAssertTrue(SearchRequest(query: "x after:2024-03-15").matches(path: url.path))
+        XCTAssertFalse(SearchRequest(query: "x after:2024-03-16").matches(path: url.path))
+        XCTAssertTrue(SearchRequest(query: "x before:2024-04").matches(path: url.path))
+        XCTAssertFalse(SearchRequest(query: "x before:2024-03-15").matches(path: url.path))
+        XCTAssertTrue(SearchRequest(query: "x after:2024 before:2025").matches(path: url.path))
+    }
+    
+    func test_searchRequest_sizeFilters_applyToFilesOnly() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".bin")
+        try Data(repeating: 0, count: 5_000).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        
+        XCTAssertTrue(SearchRequest(query: "size:>4kb").matches(path: url.path))
+        XCTAssertFalse(SearchRequest(query: "size:>5kb").matches(path: url.path))
+        XCTAssertTrue(SearchRequest(query: "size:<1mb").matches(path: url.path))
+        XCTAssertFalse(SearchRequest(query: "size:<1kb").matches(path: url.path))
+        // A file that is gone cannot satisfy an attribute filter
+        XCTAssertFalse(SearchRequest(query: "size:>1kb").matches(path: "/nonexistent/\(UUID().uuidString)"))
+    }
+    
+    func test_searchRequest_tagFilter() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        try Data("x".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        try (url as NSURL).setResourceValue(["Work"], forKey: .tagNamesKey)
+        
+        XCTAssertTrue(SearchRequest(query: "tag:work").matches(path: url.path))
+        XCTAssertFalse(SearchRequest(query: "tag:home").matches(path: url.path))
+    }
+    
+    func test_searchRequest_unparseableFilters_areDroppedNotSearched() {
+        let request = SearchRequest(query: "budget after:yesterday size:big")
+        XCTAssertEqual(request.text, "budget")
+        XCTAssertEqual(request.unrecognised, ["after:yesterday", "size:big"])
+        XCTAssertNil(SearchRequest.parseDate("2024-13-01"))
+        XCTAssertNil(SearchRequest.parseDate("24-1-1"))
+        XCTAssertNil(SearchRequest.parseSize("10mb"))
     }
     
     // MARK: - Indexing settings

@@ -80,4 +80,16 @@ final class QueryParserTests: XCTestCase {
         XCTAssertTrue(result.filters.isEmpty)
         XCTAssertEqual(result.text, "hello world")
     }
+
+    func test_hyphenInsideAName_isNotAnExclusion() {
+        let result = QueryParser.parse("LocalSearch-master my-file")
+        XCTAssertTrue(result.filters.isEmpty)
+        XCTAssertEqual(result.text, "LocalSearch-master my-file")
+    }
+    
+    func test_leadingHyphen_excludes_amongOtherWords() {
+        let result = QueryParser.parse("budget -draft 2025")
+        XCTAssertEqual(result.filters, [.exclude("draft")])
+        XCTAssertEqual(result.text, "budget 2025")
+    }
 }

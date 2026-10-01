@@ -331,15 +331,61 @@ struct IndexProgressTracker {
 }
 
 /// The query as sent to the engine, plus the inline filters applied to what
-/// comes back. Supported: `kind:pdf`, `in:folder`, and `-word` exclusions.
+/// comes back: `kind:pdf`, `in:folder`, `-word`, `after:2025-01-31`,
+/// `before:2025-06`, `size:>10mb`, `tag:work`.
 struct SearchRequest {
     /// Query text with filter tokens removed
     let text: String
     private var kinds: [String] = []
     private var folders: [String] = []
     private var excluded: [String] = []
+    private var tags: [String] = []
+    /// Modified on or after this instant
+    private var modifiedFrom: Date?
+    /// Modified before this instant
+    private var modifiedBefore: Date?
+    private var minBytes: Int64?
+    private var maxBytes: Int64?
+    /// Filter tokens that could not be understood (e.g. `after:yesterday`).
+    /// They are dropped from the query rather than searched for as words.
+    private(set) var unrecognised: [String] = []
 
     private static let filterPrefixes = ["kind:", "in:", "after:", "before:", "size:", "tag:"]
+
+    /// True when a filter needs the file's attributes, which costs a stat
+    private var needsAttributes: Bool {
+        modifiedFrom != nil || modifiedBefore != nil || minBytes != nil || maxBytes != nil || !tags.isEmpty
+    }
+
+    /// `2025`, `2025-03` or `2025-03-09`, in the user's time zone
+    static func parseDate(_ text: String) -> Date? {
+        let parts = text.split(separator: "-").compactMap { Int($0) }
+        guard (1...3).contains(parts.count), parts.count == text.split(separator: "-").count,
+              (1970...9999).contains(parts[0]) else { return nil }
+        var components = DateComponents()
+        components.year = parts[0]
+        components.month = parts.count > 1 ? parts[1] : 1
+        components.day = parts.count > 2 ? parts[2] : 1
+        guard (1...12).contains(components.month!), (1...31).contains(components.day!) else { return nil }
+        return Calendar.current.date(from: components)
+    }
+
+    /// `>10mb`, `<500kb`, `>2gb` → (isMinimum, bytes)
+    static func parseSize(_ text: String) -> (isMinimum: Bool, bytes: Int64)? {
+        guard let comparator = text.first, comparator == ">" || comparator == "<" else { return nil }
+        let rest = text.dropFirst().lowercased()
+        let digits = rest.prefix { $0.isNumber }
+        guard let amount = Int64(digits) else { return nil }
+        let multiplier: Int64
+        switch rest.dropFirst(digits.count) {
+        case "b", "": multiplier = 1
+        case "kb": multiplier = 1_000
+        case "mb": multiplier = 1_000_000
+        case "gb": multiplier = 1_000_000_000
+        default: return nil
+        }
+        return (comparator == ">", amount * multiplier)
+    }
 
     init(query: String) {
         var words: [String] = []
@@ -349,9 +395,21 @@ struct SearchRequest {
                 kinds.append(String(lower.dropFirst(5)))
             } else if lower.hasPrefix("in:") {
                 folders.append(String(lower.dropFirst(3)).replacingOccurrences(of: "~", with: ""))
+            } else if lower.hasPrefix("after:") {
+                if let date = Self.parseDate(String(lower.dropFirst(6))) { modifiedFrom = date } else { unrecognised.append(token) }
+            } else if lower.hasPrefix("before:") {
+                if let date = Self.parseDate(String(lower.dropFirst(7))) { modifiedBefore = date } else { unrecognised.append(token) }
+            } else if lower.hasPrefix("size:") {
+                if let size = Self.parseSize(String(lower.dropFirst(5))) {
+                    if size.isMinimum { minBytes = size.bytes } else { maxBytes = size.bytes }
+                } else {
+                    unrecognised.append(token)
+                }
+            } else if lower.hasPrefix("tag:") {
+                tags.append(String(lower.dropFirst(4)))
             } else if lower.hasPrefix("-"), lower.count > 1 {
                 excluded.append(String(lower.dropFirst()))
-            } else if !Self.filterPrefixes.contains(where: lower.hasPrefix) {
+            } else {
                 words.append(token)
             }
         }
@@ -373,6 +431,25 @@ struct SearchRequest {
         }
         for word in excluded {
             if url.lastPathComponent.contains(word) { return false }
+        }
+        guard needsAttributes else { return true }
+
+        // A file we cannot stat cannot be shown to satisfy a date or size filter
+        let fileURL = URL(fileURLWithPath: path)
+        guard let values = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey, .fileSizeKey, .tagNamesKey]) else {
+            return false
+        }
+        if let modifiedFrom, (values.contentModificationDate ?? .distantPast) < modifiedFrom { return false }
+        if let modifiedBefore, (values.contentModificationDate ?? .distantFuture) >= modifiedBefore { return false }
+        if minBytes != nil || maxBytes != nil {
+            // Size filters are about files; a folder has no size of its own
+            guard let size = values.fileSize.map(Int64.init) else { return false }
+            if let minBytes, size <= minBytes { return false }
+            if let maxBytes, size >= maxBytes { return false }
+        }
+        if !tags.isEmpty {
+            let fileTags = (values.tagNames ?? []).map { $0.lowercased() }
+            if !tags.allSatisfy(fileTags.contains) { return false }
         }
         return true
     }

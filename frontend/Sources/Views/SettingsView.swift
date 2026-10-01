@@ -11,8 +11,15 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @ObservedObject var settings = SettingsManager.shared
-    @State private var activeTab: SettingsTab = .indexing
-    @StateObject private var indexStatus = IndexStatusModel()
+    @State private var activeTab: SettingsTab
+    @StateObject private var indexStatus: IndexStatusModel
+    private let backend: SearchBackendProtocol
+    
+    init(initialTab: SettingsTab = .indexing, backend: SearchBackendProtocol = Backend.shared) {
+        self.backend = backend
+        _activeTab = State(initialValue: initialTab)
+        _indexStatus = StateObject(wrappedValue: IndexStatusModel(backend: backend))
+    }
     @State private var newExclude = ""
     @State private var folderNotice: String?
     
@@ -87,7 +94,8 @@ struct SettingsView: View {
                         .frame(height: 0.5)
                     
                     HStack {
-                        Text(activeTab == .indexing ? "Changes are saved and applied as you make them" : "Changes are saved automatically")
+                        // Only tabs with something to change promise to save it
+                        Text(footerNote)
                             .font(.system(size: DS.TextSize.xs))
                             .foregroundColor(MacOSDesign.textSecondary)
                         
@@ -121,6 +129,14 @@ struct SettingsView: View {
         }
     }
     
+    private var footerNote: String {
+        switch activeTab {
+        case .indexing: return "Changes are saved and applied as you make them"
+        case .appearance, .behaviour: return "Changes are saved automatically"
+        case .shortcuts, .about: return ""
+        }
+    }
+    
     // MARK: - Panels
     
     private var appearancePanel: some View {
@@ -133,7 +149,7 @@ struct SettingsView: View {
                 }
             }
             
-            MacOSSectionHeader(title: "Accent Colour")
+            MacOSSectionHeader(title: "Accent colour")
             MacOSSection {
                 MacOSRow(label: "Preset") {
                     MacOSColorPicker(selection: $settings.accentColor, customColor: $settings.customColor)
@@ -158,7 +174,7 @@ struct SettingsView: View {
     
     private var behaviourPanel: some View {
         Group {
-            MacOSSectionHeader(title: "App Presence")
+            MacOSSectionHeader(title: "App presence")
             MacOSSection {
                 MacOSRow(label: "Show app in", hint: "Where the app icon appears") {
                     // Applied the moment it is chosen, not on the next redraw
@@ -214,7 +230,11 @@ struct SettingsView: View {
             MacOSSection {
                 shortcutRow("Only a file type or kind", keys: "kind:pdf")
                 shortcutRow("Only inside a folder", keys: "in:projects")
-                shortcutRow("Leave out names containing a word", keys: "-draft", isLast: true)
+                shortcutRow("Leave out names containing a word", keys: "-draft")
+                shortcutRow("Modified on or after a date", keys: "after:2025-01-31")
+                shortcutRow("Modified before a date", keys: "before:2025-06")
+                shortcutRow("Larger or smaller than a size", keys: "size:>10mb")
+                shortcutRow("With a Finder tag", keys: "tag:work", isLast: true)
             }
         }
     }
@@ -278,7 +298,7 @@ struct SettingsView: View {
             
             MacOSSectionHeader(title: "What to index")
             MacOSSection {
-                MacOSRow(label: "Search inside files", hint: "Text, code and PDF contents, not just names") {
+                MacOSRow(label: "Search inside files", hint: "Contents of text, code, PDF and Word files, not just names") {
                     MacOSToggle(isOn: $settings.indexing.indexContent, label: "Search inside files")
                 }
                 MacOSRow(label: "Include hidden files", hint: "Names that start with a dot") {
@@ -344,7 +364,7 @@ struct SettingsView: View {
     @ViewBuilder
     private var indexStatusRow: some View {
         VStack(alignment: .leading, spacing: DS.Space.s2) {
-            if let reason = Backend.shared.unavailableReason {
+            if let reason = backend.unavailableReason {
                 statusLine(color: DS.Palette.danger, text: "Search engine not loaded")
                 Text(reason)
                     .font(.system(size: DS.TextSize.xs))
@@ -357,7 +377,12 @@ struct SettingsView: View {
                     .font(.system(size: DS.TextSize.xs))
                     .foregroundColor(MacOSDesign.textSecondary)
             } else {
-                statusLine(color: DS.Palette.success, text: indexStatus.summary ?? "Checking…")
+                // Green only once the engine has actually reported in
+                if let summary = indexStatus.summary {
+                    statusLine(color: DS.Palette.success, text: summary)
+                } else {
+                    statusLine(color: MacOSDesign.textTertiary, text: "Checking…")
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -518,14 +543,22 @@ final class IndexStatusModel: ObservableObject {
     @Published var progress: IndexProgress?
     @Published var summary: String?
     private var task: Task<Void, Never>?
+    private let backend: SearchBackendProtocol
+    
+    init(backend: SearchBackendProtocol) {
+        self.backend = backend
+        // Something to show on first paint, before the first poll returns
+        self.summary = backend.indexSummary()
+    }
     
     func start() {
         guard task == nil else { return }
+        let backend = self.backend
         task = Task { [weak self] in
-            for await progress in Backend.shared.indexProgress() {
+            for await progress in backend.indexProgress() {
                 guard let self else { return }
                 self.progress = progress
-                self.summary = Backend.shared.indexSummary()
+                self.summary = backend.indexSummary()
             }
         }
     }

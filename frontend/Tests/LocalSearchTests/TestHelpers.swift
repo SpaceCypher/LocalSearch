@@ -151,3 +151,15 @@ class MockAlerter: AlerterProtocol {
         lastAlert = MockAlert(title: title, message: message, buttons: buttons)
     }
 }
+
+// MARK: - Waiting
+
+/// Wait for a condition instead of sleeping a fixed time: fast when the
+/// machine is quick, patient when it is busy.
+@MainActor
+func waitUntil(timeout: TimeInterval = 5, _ condition: @MainActor () -> Bool) async {
+    let deadline = Date().addingTimeInterval(timeout)
+    while !condition() && Date() < deadline {
+        try? await Task.sleep(nanoseconds: 10_000_000)
+    }
+}
