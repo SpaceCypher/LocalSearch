@@ -733,7 +733,7 @@ func runSearch(query: String, generation: UInt64) async {
 
 ### Backend Communication Layer
 
-The backend is a local XPC service (`com.localsearch.engine`). The frontend communicates via a typed Swift protocol:
+The backend is a direct Rust FFI bridge (`liblocalsearch.dylib`). The frontend communicates via a typed Swift protocol:
 
 ```swift
 protocol SearchBackendProtocol {
@@ -751,6 +751,8 @@ protocol SearchBackendProtocol {
 ```
 
 The `systemState()` and `indexProgress()` streams are established once at app launch and kept open for the lifetime of the window. System state changes arrive on these streams and are applied to the `SearchViewModel` immediately. No polling.
+
+If the dylib cannot be loaded, the frontend enters an explicit unavailable-backend mode and surfaces degraded state rather than silently falling back to mock behavior.
 
 The `prefetchPrefix` call is issued speculatively when the user has typed 1–2 characters, before the debounce expires, to warm the prefix cache on the backend side.
 

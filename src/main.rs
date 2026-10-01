@@ -1,6 +1,7 @@
 use anyhow::Result;
 use localsearch::engine::{Engine, EngineConfig, Phase};
 use localsearch::metrics::dashboard::{HealthState, render_dashboard};
+use localsearch::metrics::ThreadRegistry;
 use std::time::Duration;
 
 const USAGE: &str = "\
@@ -25,6 +26,7 @@ fn main() -> Result<()> {
             // Read-only: safe to run while the app has the same directory open
             engine.load_snapshot()?;
             let stats = engine.stats();
+            let registry = ThreadRegistry::get_instance();
             let state = HealthState {
                 memory_state: if stats.over_budget { "Over budget" } else { "Normal" }.to_string(),
                 segment_count: stats.segment_count,
@@ -38,6 +40,8 @@ fn main() -> Result<()> {
                 query_p50_ms: stats.query_p50_ms,
                 query_p99_ms: stats.query_p99_ms,
                 zero_result_rate: stats.zero_result_rate,
+                thread_count: registry.thread_count(),
+                watchdog_healthy: registry.check_watchdog().is_ok(),
             };
             println!("{}", render_dashboard(&state));
         }

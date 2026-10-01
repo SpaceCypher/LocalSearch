@@ -1,4 +1,5 @@
 use crate::index::delta::{DeltaIndex, DocId, Document, Posting};
+use crate::resource::storage::{cold_segment_read_chunk, detect_storage_type};
 use std::collections::HashMap;
 use std::fs;
 use std::io::{self, Write};
@@ -91,8 +92,9 @@ impl Segment {
         #[cfg(unix)]
         {
             let file = fs::File::open(&self.path)?;
-            // Use pread to fault in the first 4KB (header/dictionary start)
-            let mut buf = [0u8; 4096];
+            // Storage-aware prefetch chunk to reduce HDD seek pressure.
+            let chunk = cold_segment_read_chunk(detect_storage_type());
+            let mut buf = vec![0u8; chunk];
             let _ = file.read_at(&mut buf, 0);
         }
         Ok(())
@@ -171,6 +173,12 @@ impl SegmentBuilder {
         
         // Atomic rename
         fs::rename(&temp_path, final_path)?;
+
+        // Invariant: what is on disk right after compaction is what was written.
+        // The file carries its own checksum (header + body + xxh3 footer), so
+        // re-reading and verifying it covers the same ground as comparing
+        // against a hash kept in memory.
+        Segment::verify(final_path)?;
         
         Ok(final_path.to_path_buf())
     }

@@ -854,6 +854,7 @@ dependencies = [
  "dirs",
  "env_logger",
  "fst",
+ "libc",
  "log",
  "lz4_flex",
  "memmap2",

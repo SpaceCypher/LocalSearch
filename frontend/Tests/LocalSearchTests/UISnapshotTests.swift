@@ -152,6 +152,17 @@ final class UISnapshotTests: XCTestCase {
                    size: panelSize(expanded: false, height: 290), name: "08-engine-unavailable")
     }
     
+    func test_render_loading_and_welcome() throws {
+        // Slow first search with nothing to show yet: skeleton rows
+        let loading = viewModel(query: "report", results: [])
+        loading.queryState = .searchingSlow
+        loading.showSkeletons = true
+        try render(SearchContentView(viewModel: loading),
+                   size: panelSize(expanded: false, height: 116 + 3 * 56 + 40), name: "09-skeletons")
+        
+        try render(WelcomeView(onContinue: {}), size: CGSize(width: 680, height: 500), name: "20-welcome")
+    }
+    
     func test_render_settings_tabs() throws {
         let size = CGSize(width: 480, height: 600)
         // Settings writes through to SettingsManager; keep the user's real settings intact

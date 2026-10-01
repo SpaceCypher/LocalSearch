@@ -18,3 +18,4 @@ image.png
 
 # Packaged app
 /dist
+.snapback/

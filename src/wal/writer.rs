@@ -237,6 +237,7 @@ mod tests {
             let entry = WalEntry { seq: i, ..WalEntry::new_test() };
             writer.append(entry).unwrap();
         }
+        writer.flush().unwrap();
 
         // Checkpoint fires when total_flushed crosses 256
         assert_eq!(writer.checkpoint_seq(), 256);

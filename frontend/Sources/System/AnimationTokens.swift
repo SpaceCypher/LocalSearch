@@ -23,7 +23,7 @@ public enum AnimationTokens {
         case .resultInsertion:
             return .spring(response: 0.25, dampingFraction: 0.9)
         case .metadataSlide:
-            return .spring(response: 0.18, dampingFraction: 0.88)
+            return .spring(response: 0.30, dampingFraction: 0.92)
         case .spinnerFade:
             return .spring(response: 0.12, dampingFraction: 1.0)
         }
@@ -88,7 +88,7 @@ extension AnimationTokens {
         case .windowDismiss: return 0.2
         case .selectionMove: return 0.15
         case .resultInsertion: return 0.25
-        case .metadataSlide: return 0.18
+        case .metadataSlide: return 0.30
         case .spinnerFade: return 0.12
         }
     }

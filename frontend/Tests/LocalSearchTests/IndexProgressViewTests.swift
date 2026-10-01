@@ -5,13 +5,13 @@ import XCTest
 final class IndexProgressViewTests: XCTestCase {
     
     func test_progressView_hidden_afterBootstrap() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.indexProgress = nil // not bootstrapping
         XCTAssertFalse(vm.showIndexProgress)
     }
     
     func test_progressView_shown_duringBootstrap() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.indexProgress = IndexProgress(phase: "Documents complete", percent: 0.32, etaMinutes: 4)
         XCTAssertTrue(vm.showIndexProgress)
     }

@@ -190,16 +190,6 @@ impl MetricsCollector {
         Ok(())
     }
 
-    /// Fraction of recorded queries that returned nothing
-    pub fn zero_result_rate(&self) -> Result<f32> {
-        let (total, zero): (i64, i64) = self.db.query_row(
-            "SELECT COUNT(*), COALESCE(SUM(result_count = 0), 0) FROM query_metrics",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        Ok(if total == 0 { 0.0 } else { zero as f32 / total as f32 })
-    }
-
     /// Get latency stats (P50, P99)
     pub fn get_latency_stats(&self) -> Result<(f64, f64)> {
         let mut p50 = 0.0;
@@ -220,6 +210,27 @@ impl MetricsCollector {
         }
 
         Ok((p50, p99))
+    }
+
+    /// Fraction of queries that returned zero results in [0.0, 1.0].
+    pub fn zero_result_rate(&self) -> Result<f32> {
+        let total: i64 = self.db.query_row(
+            "SELECT COUNT(*) FROM query_metrics",
+            [],
+            |row| row.get(0),
+        )?;
+
+        if total == 0 {
+            return Ok(0.0);
+        }
+
+        let zero_count: i64 = self.db.query_row(
+            "SELECT COUNT(*) FROM query_metrics WHERE result_count = 0",
+            [],
+            |row| row.get(0),
+        )?;
+
+        Ok(zero_count as f32 / total as f32)
     }
 }
 
@@ -353,5 +364,19 @@ mod tests {
         
         // Should still have entries (cap is 50MB, we're nowhere near that)
         assert!(collector.entry_count().unwrap() > 0);
+    }
+
+    #[test]
+    fn test_zero_result_rate() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let db_path = temp_dir.path().join("metrics.db");
+        let collector = MetricsCollector::new(&db_path).unwrap();
+
+        collector.record_query(Duration::from_millis(10), 0).unwrap();
+        collector.record_query(Duration::from_millis(20), 5).unwrap();
+        collector.record_query(Duration::from_millis(30), 0).unwrap();
+
+        let rate = collector.zero_result_rate().unwrap();
+        assert!((rate - (2.0 / 3.0)).abs() < 0.001);
     }
 }

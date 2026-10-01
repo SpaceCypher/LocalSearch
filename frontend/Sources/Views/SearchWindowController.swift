@@ -10,6 +10,7 @@ class FloatingPanel: NSPanel {
 class SearchWindowController: NSWindowController, WindowControllerProtocol {
     private var cancellables = Set<AnyCancellable>()
     private var localEventMonitor: Any?
+    private var viewModel: SearchViewModel?
 
     private let compactHeight: CGFloat = 92
     private let maxExpandedHeight: CGFloat = 564
@@ -79,6 +80,7 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         panel.contentView = visualEffectView
         
         self.init(window: panel)
+        self.viewModel = viewModel
         
         viewModel.onDismissRequested = { [weak self] in self?.hideWindow() }
         bindWindowSizing(panel: panel, viewModel: viewModel)
@@ -246,7 +248,7 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
     }
     
     func handleEscapeKey() {
-        window?.orderOut(nil)
+        self.hideWindow()
     }
     
     deinit {
@@ -276,6 +278,8 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
 
     @objc func hideWindow() {
         window?.orderOut(nil)
+        // Start clean next time the panel is summoned
+        viewModel?.clearQuery()
         
         // Notify delegate to update activation policy (to hide dock if in menuBar mode)
         if let appDelegate = NSApp.delegate as? AppDelegate {
@@ -334,7 +338,14 @@ struct SearchContentView: View {
                 }
                 
                 // Results or zero-results view
-                if viewModel.displayResults.isEmpty && viewModel.queryState == .complete {
+                if viewModel.showSkeletons {
+                    VStack(spacing: 0) {
+                        ForEach(0..<viewModel.skeletonCount, id: \.self) { _ in
+                            SkeletonResultRowView()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                } else if viewModel.displayResults.isEmpty && viewModel.queryState == .complete {
                     // Zero results state
                     ZeroResultsView(
                         query: viewModel.zeroResultsQuery,

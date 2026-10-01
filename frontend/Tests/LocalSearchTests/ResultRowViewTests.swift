@@ -76,7 +76,7 @@ final class ResultRowViewTests: XCTestCase {
     }
     
     func test_revokedPermission_enterKey_showsSystemSettingsAlert() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         let alerter = MockAlerter()
         vm.alerter = alerter
         vm.displayResults = [.mock(rank: 1.0, permissionState: .revoked)]

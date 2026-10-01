@@ -5,7 +5,7 @@ import XCTest
 final class AccessibilityTests: XCTestCase {
     
     func test_searchField_accessibilityLabel() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         // QueryFieldView doesn't exist as a separate testable component yet
         // Testing via ViewModel properties that would be used
         XCTAssertEqual(vm.searchFieldAccessibilityLabel, "Search files")
@@ -25,13 +25,13 @@ final class AccessibilityTests: XCTestCase {
     }
     
     func test_statusBar_isLiveRegion() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         // StatusBarView would use this property
         XCTAssertTrue(vm.statusBarIsLiveRegion)
     }
     
     func test_reduceMotion_allAnimationsInstant() {
-        let vm = SearchViewModel(backend: MockBackend())
+        let vm = SearchViewModel(backend: FixtureBackend())
         vm.isReduceMotionEnabled = true
         vm.onQueryChange("test")
         // When reduce motion is enabled, animations should be instant

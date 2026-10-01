@@ -140,8 +140,10 @@ final class FFIBackend: SearchBackendProtocol {
         let request = SearchRequest(query: query)
 
         return AsyncStream<[SearchResult]> { continuation in
-            Task.detached(priority: .userInitiated) {
+            let queryTask = Task.detached(priority: .userInitiated) {
                 defer { continuation.finish() }
+                // The user has already typed something else
+                if Task.isCancelled { return }
                 guard !request.text.isEmpty else {
                     continuation.yield([])
                     return
@@ -152,6 +154,7 @@ final class FFIBackend: SearchBackendProtocol {
                 let status = request.text.withCString { queryFn($0, &rawResults, &count) }
                 guard status == 0 else { return }
                 defer { freeResultsFn(rawResults, count) }
+                if Task.isCancelled { return }
 
                 guard let rawResults, count > 0 else {
                     continuation.yield([])
@@ -179,6 +182,10 @@ final class FFIBackend: SearchBackendProtocol {
                 }
 
                 continuation.yield(batch)
+            }
+
+            continuation.onTermination = { _ in
+                queryTask.cancel()
             }
         }
     }
