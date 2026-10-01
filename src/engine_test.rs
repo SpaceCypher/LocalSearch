@@ -893,3 +893,52 @@ fn test_words_whose_stem_changes_when_stemmed_twice_are_found() {
     // "everywhere" stems to "everywher", which stems again to something else
     assert_eq!(paths(&engine.search("everywhere")), ["a.txt"]);
 }
+
+#[test]
+fn test_nearly_matching_names_are_found_without_a_trigram_index() {
+    let fx = Fixture::new();
+    fx.write("finder.txt", "");
+    fx.write("unrelated.txt", "");
+    let engine = fx.indexed_engine();
+
+    // "finde" shares most of its letter triples with "finder.txt" but is not a
+    // word in the index: found by scanning names, as a fallback
+    let hits = engine.search("xfinde");
+    assert_eq!(paths(&hits), ["finder.txt"]);
+
+    // Nothing is held for this between queries
+    let state = engine.state.read().unwrap();
+    assert!(state.executor.trigram_index.search_jaccard("finder", 0.1).is_empty());
+}
+
+#[test]
+fn test_trigram_similarity() {
+    assert_eq!(trigram_similarity("finder", "finder"), 1.0);
+    assert_eq!(trigram_similarity("finder", "FINDER"), 1.0);
+    assert_eq!(trigram_similarity("xyz", "finder"), 0.0);
+    assert_eq!(trigram_similarity("ab", "abab"), 0.0);
+    // 3 shared triples of 4 in the token and 4 in the name: 3 / (4 + 4 - 3)
+    assert!((trigram_similarity("finde", "finder") - 3.0 / 4.0).abs() < 1e-6);
+    // A repeated triple in the token counts once
+    assert!(trigram_similarity("aaaa", "aaa") <= 1.0);
+}
+
+#[test]
+fn test_removing_a_folder_removes_everything_under_it_only() {
+    let fx = Fixture::new();
+    fx.write("project/src/main.rs", "");
+    fx.write("project/readme.md", "");
+    fx.write("project-notes/keep.md", "");
+    let engine = fx.indexed_engine();
+    engine.snapshot().unwrap();
+    assert_eq!(engine.doc_count(), 6);
+
+    fs::remove_dir_all(fx.root.join("project")).unwrap();
+    engine.apply_changes(vec![fx.root.join("project")]);
+
+    // "project-notes" shares the prefix "project" but is a different folder
+    assert_eq!(engine.doc_count(), 2);
+    assert_eq!(paths(&engine.search("keep")), ["keep.md"]);
+    assert!(engine.search("main.rs").is_empty());
+    assert!(engine.search("readme").is_empty());
+}

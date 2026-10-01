@@ -45,6 +45,7 @@ use crossbeam::channel::{Receiver, RecvTimeoutError};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
+use xxhash_rust::xxh3::xxh3_64;
 
 use crate::extract::client::ExtractionClient;
 use crate::extract::extractors::{content_kind, ContentKind};
@@ -407,8 +408,9 @@ pub struct EngineStats {
 
 struct State {
     executor: QueryExecutor,
-    /// path → DocId for live documents
-    path_ids: HashMap<String, DocId>,
+    /// hash of path → DocId for live documents. Keyed by hash so that paths
+    /// are stored once (in the document table); a lookup confirms the path.
+    path_ids: HashMap<u64, DocId>,
     signals: SignalDb,
 }
 
@@ -431,6 +433,12 @@ impl State {
         &self.executor.delta_index.documents
     }
 
+    /// The document indexed at exactly this path, if any.
+    fn id_of(&self, path: &str) -> Option<DocId> {
+        let doc_id = *self.path_ids.get(&xxh3_64(path.as_bytes()))?;
+        (self.docs().get(&doc_id)?.path == path).then_some(doc_id)
+    }
+
     /// Register a document's name with the lookup structures that sit beside
     /// the inverted index (fuzzy, phonetic, substring, scope).
     fn register(&mut self, doc_id: DocId, path: &str, name_terms: impl Iterator<Item = String>) {
@@ -442,10 +450,10 @@ impl State {
                 terms.push(term);
             }
         }
-        let filename = path.rsplit('/').next().unwrap_or(path);
-        self.executor.trigram_index.insert(filename, doc_id);
-        self.executor.path_trie.insert(path, doc_id);
-        self.path_ids.insert(path.to_string(), doc_id);
+        // No per-file trigram or path-trie entries: approximate name matching
+        // and folder lookups scan the document table instead (see `search`
+        // and `apply_paths`), which costs milliseconds and saves ~50 MB.
+        self.path_ids.insert(xxh3_64(path.as_bytes()), doc_id);
     }
 }
 
@@ -639,7 +647,6 @@ impl Engine {
             state.register(*doc_id, path, filename_tokens.into_iter().chain(dir_tokens));
         }
         state.executor.refresh_stats();
-        state.executor.path_trie.rebuild_prefix_cache(20);
         state.signals = fs::read_to_string(self.data_dir.join("signals.json"))
             .ok()
             .and_then(|text| serde_json::from_str(&text).ok())
@@ -749,7 +756,7 @@ impl Engine {
     /// The DocId of `path` if the index already holds this exact version of it.
     fn unchanged(&self, path: &str, metadata: &fs::Metadata) -> Option<DocId> {
         let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
-        let doc_id = *state.path_ids.get(path)?;
+        let doc_id = state.id_of(path)?;
         let doc = state.docs().get(&doc_id)?;
         (doc.mtime_ns == mtime_ns(metadata) && doc.size == metadata.len()).then_some(doc_id)
     }
@@ -825,11 +832,11 @@ impl Engine {
         }
         for doc_id in &removed {
             if let Some(doc) = state.executor.delta_index.documents.get(doc_id) {
-                if state.path_ids.get(&doc.path) == Some(doc_id) {
-                    state.path_ids.remove(&doc.path);
+                let key = xxh3_64(doc.path.as_bytes());
+                if state.path_ids.get(&key) == Some(doc_id) {
+                    state.path_ids.remove(&key);
                 }
             }
-            state.executor.trigram_index.remove(*doc_id);
             // Its postings in the on-disk base no longer count
             let ordinal = state.executor.base.as_ref().and_then(|base| base.ordinal_of(*doc_id));
             if let Some(ordinal) = ordinal {
@@ -934,7 +941,6 @@ impl Engine {
                 log::info!("reconcile: removing {} documents no longer on disk or in scope", stale.len());
             }
             self.commit(Vec::new(), stale);
-            self.state.write().unwrap_or_else(PoisonError::into_inner).executor.path_trie.rebuild_prefix_cache(20);
             self.warming.store(false, Ordering::Relaxed);
         }
     }
@@ -1061,22 +1067,19 @@ impl Engine {
                 None => {
                     // Gone: the path itself and, if it was a directory, everything under it
                     let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
-                    if let Some(doc_id) = state.path_ids.get(path_str) {
-                        removed.insert(*doc_id);
+                    if let Some(doc_id) = state.id_of(path_str) {
+                        removed.insert(doc_id);
                     }
                     let prefix = format!("{path_str}/");
-                    for id in state.executor.path_trie.scope_query(&path) {
-                        let doc_id = DocId(id as u64);
-                        if state.docs().get(&doc_id).is_some_and(|doc| doc.path.starts_with(&prefix)) {
-                            removed.insert(doc_id);
-                        }
-                    }
+                    removed.extend(
+                        state.docs().values().filter(|doc| doc.path.starts_with(&prefix)).map(|doc| doc.doc_id),
+                    );
                 }
                 Some(metadata) => {
                     if self.unchanged(path_str, &metadata).is_some() {
                         continue;
                     }
-                    let is_new = !self.state.read().unwrap_or_else(PoisonError::into_inner).path_ids.contains_key(path_str);
+                    let is_new = self.state.read().unwrap_or_else(PoisonError::into_inner).id_of(path_str).is_none();
                     batch.extend(self.prepare(&tokenizer, &config, &path, &metadata));
 
                     // A directory that appears whole (moved or copied in) may
@@ -1372,7 +1375,6 @@ impl Engine {
                     || dirty >= SNAPSHOT_MAX_DIRTY);
             if due {
                 self.save_if_dirty();
-                self.state.write().unwrap_or_else(PoisonError::into_inner).executor.path_trie.rebuild_prefix_cache(20);
                 last_snapshot = Instant::now();
             }
         }
@@ -1536,6 +1538,32 @@ impl Engine {
         // Approximate matches only stand in when the query as typed found
         // little, and then only the ones close to the best of them.
         if hits.len() < APPROX_FALLBACK_BELOW {
+            // Names that nearly match: file names sharing most of their letter
+            // triples with a query word. Computed here, by scanning names, only
+            // when it is needed, instead of holding a trigram index in memory.
+            // (Not for literal queries: "note7.md" names one file, and its
+            // lookalikes would only be noise.)
+            let similar: Vec<(DocId, f32)> = state
+                .docs()
+                .par_iter()
+                .filter(|_| !literal)
+                .filter(|(doc_id, _)| !candidates.get(*doc_id).is_some_and(|candidate| candidate.exact))
+                .filter_map(|(doc_id, doc)| {
+                    let filename = doc.path.rsplit('/').next().unwrap_or("");
+                    // Compare against the name without its extension, which
+                    // would otherwise dilute the similarity of short names
+                    let stem = filename.rsplit_once('.').map_or(filename, |(stem, _)| stem);
+                    let similarity: f32 = query_tokens.iter().map(|token| trigram_similarity(token, stem)).filter(|s| *s >= 0.5).sum();
+                    (similarity > 0.0).then_some((*doc_id, similarity))
+                })
+                .collect();
+            for (doc_id, similarity) in similar {
+                candidates
+                    .entry(doc_id)
+                    .or_insert(Candidate { score: 0.0, exact: false, source: ResultSource::LocalIndex })
+                    .score += similarity * INDEX_SCORE_WEIGHT;
+            }
+
             let mut approximate: Vec<SearchHit> = candidates
                 .iter()
                 .filter(|(_, candidate)| !candidate.exact)
@@ -1599,7 +1627,7 @@ impl Engine {
             return None;
         }
         // Only files the index knows about; this is not a general file reader
-        if !self.state.read().unwrap_or_else(PoisonError::into_inner).path_ids.contains_key(path) {
+        if self.state.read().unwrap_or_else(PoisonError::into_inner).id_of(path).is_none() {
             return None;
         }
         let tokenizer = Tokenizer::new();
@@ -1840,6 +1868,29 @@ fn build_snippet(
         }
     }
     Some(tidy.trim_end().to_string())
+}
+
+/// Jaccard similarity between the letter triples of `token` (already
+/// lower-case) and those of `name`, without allocating: each of the token's
+/// triples is searched for in the name. Byte-based, so it is exact for ASCII
+/// and approximate beyond it, which is fine for a fallback.
+fn trigram_similarity(token: &str, name: &str) -> f32 {
+    let (token, name) = (token.as_bytes(), name.as_bytes());
+    if token.len() < 3 || name.len() < 3 {
+        return 0.0;
+    }
+    let token_triples = token.len() - 2;
+    let shared = token
+        .windows(3)
+        .enumerate()
+        // Count each distinct triple of the token once
+        .filter(|(i, triple)| !token.windows(3).take(*i).any(|earlier| earlier == *triple))
+        .filter(|(_, triple)| name.windows(3).any(|window| window.eq_ignore_ascii_case(triple)))
+        .count();
+    if shared == 0 {
+        return 0.0;
+    }
+    shared as f32 / (token_triples + (name.len() - 2) - shared) as f32
 }
 
 fn contains_ignore_ascii_case(haystack: &str, needle_lc: &str) -> bool {
