@@ -73,9 +73,14 @@ macro_rules! fault_point {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    /// The injector is process-wide, so tests that configure it take turns
+    static SERIAL: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_fault_injector_basic() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let injector = FaultInjector::get();
         injector.clear();
         
@@ -90,6 +95,7 @@ mod tests {
 
     #[test]
     fn test_fault_point_macro() {
+        let _serial = SERIAL.lock().unwrap_or_else(|e| e.into_inner());
         let injector = FaultInjector::get();
         injector.clear();
         
@@ -104,5 +110,6 @@ mod tests {
             triggered = true;
         });
         assert!(triggered);
+        injector.clear();
     }
 }

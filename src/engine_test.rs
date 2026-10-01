@@ -671,3 +671,25 @@ fn test_old_format_snapshot_is_rebuilt_not_trusted() {
     engine.reconcile();
     assert_eq!(paths(&engine.search("kept")), ["kept.txt"]);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn test_finds_word_document_by_content() {
+    let fx = Fixture::new();
+    // Make a real .docx with the system converter
+    let source = fx.data_dir.join("source.txt");
+    fs::write(&source, "Quarterly notes about the capybara enclosure.").unwrap();
+    let docx = fx.root.join("minutes.docx");
+    let converted = std::process::Command::new("/usr/bin/textutil")
+        .args(["-convert", "docx", "-output"])
+        .arg(&docx)
+        .arg(&source)
+        .status()
+        .expect("textutil runs");
+    assert!(converted.success() && docx.exists());
+    let engine = fx.indexed_engine();
+
+    assert_eq!(paths(&engine.search("capybara")), ["minutes.docx"]);
+    let snippet = engine.snippet(docx.to_str().unwrap(), "capybara").unwrap();
+    assert_eq!(marked(&snippet), "Quarterly notes about the [capybara] enclosure.");
+}

@@ -26,6 +26,9 @@ pub enum ContentKind {
     Text,
     /// Parsed with PDFKit (in the extractor helper process when available)
     Pdf,
+    /// Word, RTF and OpenDocument text, read with the system's document
+    /// importers (in the extractor helper process when available)
+    RichText,
     /// Not content-indexed
     Unsupported,
 }
@@ -37,6 +40,11 @@ const TEXT_EXTENSIONS: &[&str] = &[
     "rb", "php", "sh", "zsh", "bash", "sql", "lua", "r", "scala", "dart", "cs",
 ];
 
+const RICH_TEXT_EXTENSIONS: &[&str] = &["docx", "doc", "rtf", "odt"];
+
+/// Rich-text documents larger than this are skipped rather than parsed
+const MAX_RICH_TEXT_FILE_SIZE: u64 = 50 * 1024 * 1024;
+
 pub fn content_kind(path: &Path) -> ContentKind {
     let extension = path.extension()
         .and_then(|e| e.to_str())
@@ -45,6 +53,8 @@ pub fn content_kind(path: &Path) -> ContentKind {
 
     if extension == "pdf" {
         ContentKind::Pdf
+    } else if RICH_TEXT_EXTENSIONS.contains(&extension.as_str()) {
+        ContentKind::RichText
     } else if TEXT_EXTENSIONS.contains(&extension.as_str()) {
         ContentKind::Text
     } else {
@@ -165,11 +175,100 @@ pub fn extract_pdf(_path: &Path) -> anyhow::Result<ExtractionResult> {
     Ok(ExtractionResult { text: String::new(), full_content: true })
 }
 
+/// Cut `text` to the extraction limit on a character boundary.
+fn truncated(mut text: String) -> ExtractionResult {
+    let full_content = text.len() <= MAX_EXTRACT_SIZE;
+    if !full_content {
+        let mut cut = MAX_EXTRACT_SIZE;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+    }
+    ExtractionResult { text, full_content }
+}
+
+/// Extract the text of a Word (.docx, .doc), RTF or OpenDocument file using
+/// `NSAttributedString`'s document importers.
+///
+/// Malformed files yield an empty result. Like `extract_pdf`, this runs the
+/// system parser in the calling process; `ExtractionClient` routes these
+/// files to the helper.
+#[cfg(target_os = "macos")]
+pub fn extract_rich_text(path: &Path) -> anyhow::Result<ExtractionResult> {
+    use objc2::msg_send;
+    use objc2::rc::autoreleasepool;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+
+    #[link(name = "AppKit", kind = "framework")]
+    extern "C" {}
+
+    let empty = ExtractionResult { text: String::new(), full_content: true };
+
+    if std::fs::metadata(path)?.len() > MAX_RICH_TEXT_FILE_SIZE {
+        return Ok(empty);
+    }
+    let (Some(ns_string), Some(ns_url), Some(ns_dictionary), Some(attributed_string)) = (
+        AnyClass::get("NSString"),
+        AnyClass::get("NSURL"),
+        AnyClass::get("NSDictionary"),
+        AnyClass::get("NSAttributedString"),
+    ) else {
+        return Ok(empty);
+    };
+    let Ok(c_path) = CString::new(path.to_string_lossy().as_bytes()) else {
+        return Ok(empty);
+    };
+
+    let mut text = String::new();
+    autoreleasepool(|_| unsafe {
+        let ns_path: *mut AnyObject = msg_send![ns_string, stringWithUTF8String: c_path.as_ptr()];
+        if ns_path.is_null() {
+            return;
+        }
+        let url: *mut AnyObject = msg_send![ns_url, fileURLWithPath: ns_path];
+        // Empty options: the importer picks the format from the file itself
+        let options: *mut AnyObject = msg_send![ns_dictionary, dictionary];
+        let no_attributes: *mut *mut AnyObject = std::ptr::null_mut();
+        let no_error: *mut *mut AnyObject = std::ptr::null_mut();
+
+        let document: *mut AnyObject = msg_send![attributed_string, alloc];
+        let document: *mut AnyObject = msg_send![
+            document,
+            initWithURL: url,
+            options: options,
+            documentAttributes: no_attributes,
+            error: no_error
+        ];
+        if document.is_null() {
+            return;
+        }
+        let contents: *mut AnyObject = msg_send![document, string];
+        if !contents.is_null() {
+            let utf8: *const c_char = msg_send![contents, UTF8String];
+            if !utf8.is_null() {
+                text.push_str(&CStr::from_ptr(utf8).to_string_lossy());
+            }
+        }
+        let _: () = msg_send![document, release];
+    });
+
+    Ok(truncated(text))
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn extract_rich_text(_path: &Path) -> anyhow::Result<ExtractionResult> {
+    Ok(ExtractionResult { text: String::new(), full_content: true })
+}
+
 /// Extract content from any file (dispatcher), in the calling process
 pub fn extract_content(path: &Path) -> anyhow::Result<ExtractionResult> {
     match content_kind(path) {
         ContentKind::Text => extract_plaintext(path),
         ContentKind::Pdf => extract_pdf(path),
+        ContentKind::RichText => extract_rich_text(path),
         ContentKind::Unsupported => Ok(ExtractionResult {
             text: String::new(),
             full_content: true,
@@ -252,6 +351,40 @@ pub(crate) mod tests {
             format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n", objects.len() + 1, xref).as_bytes(),
         );
         pdf
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_extract_rtf_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("letter.rtf");
+        std::fs::write(&file, r"{\rtf1\ansi\deff0 {\fonttbl {\f0 Helvetica;}}\f0 Dear {\b Zebrafish} owner,\par see you soon.}").unwrap();
+
+        let result = extract_content(&file).unwrap();
+        assert!(result.text.contains("Dear Zebrafish owner"), "got {:?}", result.text);
+        assert!(!result.text.contains("rtf1"), "markup must not be indexed: {:?}", result.text);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_malformed_word_document_yields_empty_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("broken.docx");
+        std::fs::write(&file, b"this is not a zip archive").unwrap();
+
+        // Must neither panic nor index the raw bytes as if they were prose
+        let result = extract_content(&file).unwrap();
+        assert!(!result.text.contains("zip archive") || result.text.len() < 64, "got {:?}", result.text);
+    }
+
+    #[test]
+    fn test_content_kinds() {
+        assert_eq!(content_kind(Path::new("a.DOCX")), ContentKind::RichText);
+        assert_eq!(content_kind(Path::new("a.rtf")), ContentKind::RichText);
+        assert_eq!(content_kind(Path::new("a.pdf")), ContentKind::Pdf);
+        assert_eq!(content_kind(Path::new("a.rs")), ContentKind::Text);
+        assert_eq!(content_kind(Path::new("a.png")), ContentKind::Unsupported);
+        assert_eq!(content_kind(Path::new("noextension")), ContentKind::Unsupported);
     }
 
     #[cfg(target_os = "macos")]

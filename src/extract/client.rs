@@ -38,7 +38,7 @@ impl Drop for Helper {
 /// Extracts file content for indexing.
 ///
 /// Plain text is read in-process. Formats that need a system parser (PDF via
-/// PDFKit) are sent to the `localsearch-extractor` helper process, so a parser
+/// PDFKit; Word, RTF and OpenDocument via the AppKit importers) are sent to the `localsearch-extractor` helper process, so a parser
 /// crash or hang costs one file rather than the app. If the helper binary
 /// cannot be found, those formats are parsed in-process instead.
 pub struct ExtractionClient {
@@ -50,7 +50,7 @@ impl ExtractionClient {
     pub fn new() -> Self {
         let helper_path = locate_helper();
         if helper_path.is_none() {
-            log::warn!("{HELPER_BINARY} not found; PDFs will be parsed in-process");
+            log::warn!("{HELPER_BINARY} not found; PDFs and documents will be parsed in-process");
         }
         Self { helper_path, helper: None }
     }
@@ -84,11 +84,12 @@ impl ExtractionClient {
                 let result = extractors::extract_plaintext(path_ref)?;
                 (result.text, result.full_content)
             }
-            ContentKind::Pdf => {
+            // Formats handed to a system parser: out of process when we can
+            ContentKind::Pdf | ContentKind::RichText => {
                 if self.helper_path.is_some() {
                     self.extract_via_helper(path_ref).unwrap_or_default()
                 } else {
-                    let result = extractors::extract_pdf(path_ref)?;
+                    let result = extractors::extract_content(path_ref)?;
                     (result.text, result.full_content)
                 }
             }
