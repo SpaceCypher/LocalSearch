@@ -1,6 +1,5 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::time::Duration;
-use crate::fs::reconcile::ReconciliationDiff;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum WatchStrategy {

@@ -22,7 +22,6 @@ pub struct Posting {
     pub doc_id: DocId,
     pub term_freq: u32,
     pub field_mask: u8,
-    pub positions: Vec<u32>,
 }
 
 impl Posting {
@@ -31,7 +30,6 @@ impl Posting {
             doc_id,
             term_freq,
             field_mask,
-            positions: Vec::new(),
         }
     }
 }
@@ -83,9 +81,9 @@ pub struct DeltaIndex {
     approx_bytes: usize,
 }
 
-/// Approximate heap cost of one posting (struct + positions)
-fn posting_bytes(posting: &Posting) -> usize {
-    std::mem::size_of::<Posting>() + posting.positions.len() * 4
+/// Heap cost of one posting
+fn posting_bytes(_posting: &Posting) -> usize {
+    std::mem::size_of::<Posting>()
 }
 
 impl DeltaIndex {

@@ -1,7 +1,6 @@
-use crate::query::parser::{Query, Tokenizer};
-use crate::query::ranker::{BM25Scorer, Ranker};
-use crate::query::phonetic::double_metaphone;
-use crate::index::delta::{DeltaIndex, Document, DocId};
+use crate::query::parser::Query;
+use crate::query::ranker::Ranker;
+use crate::index::delta::{DeltaIndex, DocId};
 use crate::index::bktree::BkTree;
 use crate::index::trie::PathTrie;
 use crate::index::trigram::TrigramIndex;
@@ -15,6 +14,9 @@ pub struct SearchResult {
     pub path: String,
     pub score: f32,
     pub source: ResultSource,
+    /// False when the document matched only through approximate (typo,
+    /// phonetic, trigram) expansion of the query
+    pub exact: bool,
 }
 
 const MAX_RESULTS: usize = 100;
@@ -26,7 +28,6 @@ pub struct QueryExecutor {
     pub(crate) trigram_index: TrigramIndex,
     pub(crate) phonetic_index: HashMap<String, Vec<String>>, // phonetic code → terms
     pub ranker: Ranker,
-    tokenizer: Tokenizer,
     pub spotlight_fallback: crate::query::spotlight_fallback::SpotlightFallback,
     pub is_warming: bool,
 }
@@ -48,7 +49,6 @@ impl QueryExecutor {
             trigram_index,
             phonetic_index,
             ranker: Ranker::new(total_docs, avg_doc_len),
-            tokenizer: Tokenizer::new(),
             spotlight_fallback: crate::query::spotlight_fallback::SpotlightFallback::new(),
             is_warming: false,
         }
@@ -68,7 +68,7 @@ impl QueryExecutor {
             cancel_token.as_ref().map_or(false, |t| t.load(std::sync::atomic::Ordering::Relaxed))
         };
 
-        let mut merged_scores: HashMap<DocId, f32> = HashMap::new();
+        let mut merged_scores: HashMap<DocId, (f32, bool)> = HashMap::new();
 
         // Step 0: Prefix cache seeds candidates for short single-token queries.
         // They are ranked with everything else in Step 3 rather than returned as-is.
@@ -79,7 +79,7 @@ impl QueryExecutor {
                     let Some(doc) = self.delta_index.documents.get(&doc_id) else { continue };
                     let filename = doc.path.rsplit('/').next().unwrap_or("").to_lowercase();
                     if filename.starts_with(&prefix) {
-                        merged_scores.insert(doc_id, 1.0);
+                        merged_scores.insert(doc_id, (1.0, true));
                     }
                 }
             }
@@ -104,7 +104,9 @@ impl QueryExecutor {
         // Step 2: Merge results and apply bonuses
         for results in all_provider_results {
             for res in results {
-                *merged_scores.entry(res.doc_id).or_insert(0.0) += res.score;
+                let entry = merged_scores.entry(res.doc_id).or_insert((0.0, false));
+                entry.0 += res.score;
+                entry.1 |= res.exact;
             }
         }
 
@@ -119,7 +121,7 @@ impl QueryExecutor {
         let query_token_count = query.tokens.len();
         let mut final_results = Vec::new();
 
-        for (doc_id, base_score) in merged_scores {
+        for (doc_id, (base_score, exact)) in merged_scores {
             if is_cancelled() { break; }
             
             // FSI Filter: Document Validity & Volume Isolation
@@ -167,6 +169,7 @@ impl QueryExecutor {
                     path: doc.path.clone(),
                     score: final_score,
                     source: ResultSource::LocalIndex,
+                    exact,
                 });
             }
         }
@@ -201,7 +204,9 @@ impl QueryExecutor {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::index::delta::FIELD_FILENAME;
+    use crate::index::delta::{Document, FIELD_FILENAME};
+    use crate::query::parser::Tokenizer;
+    use crate::query::phonetic::double_metaphone;
     use crate::index::delta::Posting;
 
     fn build_test_executor(docs: &[(&str, &str)]) -> QueryExecutor {
@@ -243,7 +248,6 @@ mod tests {
                         doc_id,
                         term_freq: 1,
                         field_mask: FIELD_FILENAME,
-                        positions: vec![token.position],
                     },
                 );
             }
@@ -253,7 +257,6 @@ mod tests {
                     doc_id,
                     term_freq: 1,
                     field_mask: FIELD_FILENAME,
-                    positions: vec![token.position],
                 });
             }
             

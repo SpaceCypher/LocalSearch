@@ -229,7 +229,9 @@ mod tests {
     fn test_wal_writer_append_and_checkpoint() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.wal");
-        let writer = WalWriter::new(&path).unwrap();
+        // Long deadline: a timer flush mid-loop would shift the batch
+        // boundaries and leave fewer than 256 entries flushed at the end.
+        let writer = WalWriter::new_with_deadline(&path, Duration::from_secs(60)).unwrap();
 
         for i in 0..300u64 {
             let entry = WalEntry { seq: i, ..WalEntry::new_test() };

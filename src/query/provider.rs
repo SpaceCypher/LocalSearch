@@ -8,6 +8,9 @@ use std::collections::HashMap;
 pub struct RawResult {
     pub doc_id: DocId,
     pub score: f32,
+    /// The document contains a query term as typed (after stemming), as
+    /// opposed to matching only through typo/phonetic/trigram expansion
+    pub exact: bool,
 }
 
 /// A trait for components that can provide search results for a query.
@@ -77,15 +80,23 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
                 // The exact term always participates: content-only terms are
                 // not in the BK-tree, so expansions alone would miss them.
                 expanded_terms.push((token.term.clone(), 1.0));
+                // An expansion counts for less the further it is from what was
+                // typed: one edit is probably the intended word, two edits or
+                // a sound-alike is a long shot.
                 for term in fuzzy_matches {
                     if term != token.term && !expanded_terms.iter().any(|(t, _)| t == &term) {
-                        expanded_terms.push((term, 0.5));
+                        let weight = match crate::index::bktree::damerau_levenshtein(&token.term, &term) {
+                            0 | 1 => 0.6,
+                            2 => 0.25,
+                            _ => 0.15,
+                        };
+                        expanded_terms.push((term, weight));
                     }
                 }
             }
         }
 
-        let mut doc_scores: HashMap<DocId, f32> = HashMap::new();
+        let mut doc_scores: HashMap<DocId, (f32, bool)> = HashMap::new();
         for (term, weight) in expanded_terms {
             if let Some(postings) = self.delta_index.postings(&term) {
                 let doc_freq = postings.len() as u64;
@@ -100,14 +111,15 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
                     
                     let score = self.scorer.score(posting.term_freq as u64, doc_len, doc_freq);
                     
-                    *doc_scores.entry(posting.doc_id).or_insert(0.0) +=
-                        score * weight * field_boost(posting.field_mask);
+                    let entry = doc_scores.entry(posting.doc_id).or_insert((0.0, false));
+                    entry.0 += score * weight * field_boost(posting.field_mask);
+                    entry.1 |= weight >= 1.0;
                 }
             }
         }
 
         doc_scores.into_iter()
-            .map(|(doc_id, score)| RawResult { doc_id, score })
+            .map(|(doc_id, (score, exact))| RawResult { doc_id, score, exact })
             .collect()
     }
 }
@@ -155,7 +167,7 @@ impl<'a> ResultProvider for TrigramProvider<'a> {
         }
 
         results.into_iter()
-            .map(|(doc_id, score)| RawResult { doc_id, score })
+            .map(|(doc_id, score)| RawResult { doc_id, score, exact: false })
             .collect()
     }
 }
@@ -187,9 +199,9 @@ mod tests {
     #[test]
     fn test_normalize_preserves_ratios() {
         let mut results = vec![
-            RawResult { doc_id: DocId(1), score: 4.0 },
-            RawResult { doc_id: DocId(2), score: 3.9 },
-            RawResult { doc_id: DocId(3), score: 1.0 },
+            RawResult { doc_id: DocId(1), score: 4.0, exact: true },
+            RawResult { doc_id: DocId(2), score: 3.9, exact: true },
+            RawResult { doc_id: DocId(3), score: 1.0, exact: true },
         ];
         ScoreNormalizer::normalize(&mut results);
         assert_eq!(results[0].score, 1.0);
@@ -200,7 +212,7 @@ mod tests {
     #[test]
     fn test_normalize_handles_empty_and_zero() {
         ScoreNormalizer::normalize(&mut []);
-        let mut results = vec![RawResult { doc_id: DocId(1), score: 0.0 }];
+        let mut results = vec![RawResult { doc_id: DocId(1), score: 0.0, exact: true }];
         ScoreNormalizer::normalize(&mut results);
         assert_eq!(results[0].score, 0.0);
     }

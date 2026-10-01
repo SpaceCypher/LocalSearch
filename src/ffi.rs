@@ -51,6 +51,19 @@ fn engine() -> Option<&'static Arc<Engine>> {
         .as_ref()
 }
 
+/// Status returned when the engine panicked inside a call
+const PANICKED: i32 = 6;
+
+/// Run `body`, turning a panic into `on_panic`. Unwinding across the C ABI
+/// into Swift is undefined behaviour, so every exported function goes
+/// through this.
+fn guarded<T>(on_panic: T, body: impl FnOnce() -> T) -> T {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(body)).unwrap_or_else(|_| {
+        log::error!("panic caught at the FFI boundary");
+        on_panic
+    })
+}
+
 /// Borrow a C string argument as UTF-8. Err carries the status code to return.
 unsafe fn str_arg<'a>(ptr: *const c_char) -> Result<&'a str, i32> {
     if ptr.is_null() {
@@ -61,92 +74,99 @@ unsafe fn str_arg<'a>(ptr: *const c_char) -> Result<&'a str, i32> {
 
 /// Run a query. On success (0) `*results` points to `*count` results, to be
 /// released with `localsearch_free_results`; both are null/0 for no results.
-/// Returns 1 for null arguments, 2 for invalid UTF-8, 3 if the engine is unavailable.
+/// Returns 1 for null arguments, 2 for invalid UTF-8, 3 if the engine is
+/// unavailable, 6 if the engine failed internally.
 #[no_mangle]
 pub extern "C" fn localsearch_query(
     query: *const c_char,
     results: *mut *mut SearchResult,
     count: *mut usize,
 ) -> i32 {
-    if results.is_null() || count.is_null() {
-        return 1;
-    }
-    let query_str = match unsafe { str_arg(query) } {
-        Ok(q) => q,
-        Err(code) => return code,
-    };
-    unsafe {
-        *results = std::ptr::null_mut();
-        *count = 0;
-    }
-    let Some(engine) = engine() else {
-        return 3;
-    };
-
-    let mut ffi_results = Vec::new();
-    for hit in engine.search(query_str) {
-        let snippet = Path::new(&hit.path)
-            .file_name()
-            .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        // Paths with interior NULs cannot cross the boundary; skip them
-        let (Ok(path), Ok(snippet)) = (CString::new(hit.path), CString::new(snippet)) else {
-            continue;
+    guarded(PANICKED, || {
+        if results.is_null() || count.is_null() {
+            return 1;
+        }
+        let query_str = match unsafe { str_arg(query) } {
+            Ok(q) => q,
+            Err(code) => return code,
         };
-        ffi_results.push(SearchResult {
-            doc_id: hit.doc_id,
-            path: path.into_raw(),
-            score: hit.score,
-            snippet: snippet.into_raw(),
-        });
-    }
+        unsafe {
+            *results = std::ptr::null_mut();
+            *count = 0;
+        }
+        let Some(engine) = engine() else {
+            return 3;
+        };
 
-    if ffi_results.is_empty() {
-        return 0;
-    }
+        let mut ffi_results = Vec::new();
+        for hit in engine.search(query_str) {
+            let snippet = Path::new(&hit.path)
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            // Paths with interior NULs cannot cross the boundary; skip them
+            let (Ok(path), Ok(snippet)) = (CString::new(hit.path), CString::new(snippet)) else {
+                continue;
+            };
+            ffi_results.push(SearchResult {
+                doc_id: hit.doc_id,
+                path: path.into_raw(),
+                score: hit.score,
+                snippet: snippet.into_raw(),
+            });
+        }
 
-    let len = ffi_results.len();
-    let ptr = Box::into_raw(ffi_results.into_boxed_slice()) as *mut SearchResult;
-    unsafe {
-        *results = ptr;
-        *count = len;
-    }
-    0
+        if ffi_results.is_empty() {
+            return 0;
+        }
+
+        let len = ffi_results.len();
+        let ptr = Box::into_raw(ffi_results.into_boxed_slice()) as *mut SearchResult;
+        unsafe {
+            *results = ptr;
+            *count = len;
+        }
+        0
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn localsearch_free_results(results: *mut SearchResult, count: usize) {
-    if results.is_null() || count == 0 {
-        return;
-    }
-
-    unsafe {
-        let slice = std::slice::from_raw_parts_mut(results, count);
-        for item in slice.iter() {
-            if !item.path.is_null() {
-                let _ = CString::from_raw(item.path as *mut c_char);
-            }
-            if !item.snippet.is_null() {
-                let _ = CString::from_raw(item.snippet as *mut c_char);
-            }
+    guarded((), || {
+        if results.is_null() || count == 0 {
+            return;
         }
 
-        let _ = Box::from_raw(slice as *mut [SearchResult]);
-    }
+        unsafe {
+            let slice = std::slice::from_raw_parts_mut(results, count);
+            for item in slice.iter() {
+                if !item.path.is_null() {
+                    let _ = CString::from_raw(item.path as *mut c_char);
+                }
+                if !item.snippet.is_null() {
+                    let _ = CString::from_raw(item.snippet as *mut c_char);
+                }
+            }
+
+            let _ = Box::from_raw(slice as *mut [SearchResult]);
+        }
+    })
 }
 
 /// The user opened `path` from the results. Feeds ranking.
 #[no_mangle]
 pub extern "C" fn localsearch_record_click(path: *const c_char) -> i32 {
-    let path_str = match unsafe { str_arg(path) } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let Some(engine) = engine() else {
-        return 3;
-    };
-    engine.record_click(path_str);
-    0
+    guarded(PANICKED, || {
+        let path_str = match unsafe { str_arg(path) } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        let Some(engine) = engine() else {
+            return 3;
+        };
+        engine.record_click(path_str);
+        0
+    })
 }
 
 /// The line of `path`'s content that matches `query`, or null if there is none
@@ -155,22 +175,26 @@ pub extern "C" fn localsearch_record_click(path: *const c_char) -> i32 {
 /// Release the result with `localsearch_free_string`.
 #[no_mangle]
 pub extern "C" fn localsearch_snippet(path: *const c_char, query: *const c_char) -> *mut c_char {
-    let (Ok(path), Ok(query)) = (unsafe { str_arg(path) }, unsafe { str_arg(query) }) else {
-        return std::ptr::null_mut();
-    };
-    engine()
-        .and_then(|engine| engine.snippet(path, query))
-        .and_then(|snippet| CString::new(snippet).ok())
-        .map_or(std::ptr::null_mut(), CString::into_raw)
+    guarded(std::ptr::null_mut(), || {
+        let (Ok(path), Ok(query)) = (unsafe { str_arg(path) }, unsafe { str_arg(query) }) else {
+            return std::ptr::null_mut();
+        };
+        engine()
+            .and_then(|engine| engine.snippet(path, query))
+            .and_then(|snippet| CString::new(snippet).ok())
+            .map_or(std::ptr::null_mut(), CString::into_raw)
+    })
 }
 
 #[no_mangle]
 pub extern "C" fn localsearch_free_string(string: *mut c_char) {
-    if !string.is_null() {
-        unsafe {
-            let _ = CString::from_raw(string);
+    guarded((), || {
+        if !string.is_null() {
+            unsafe {
+                let _ = CString::from_raw(string);
+            }
         }
-    }
+    })
 }
 
 /// Set what gets indexed. `config_json` is an `EngineConfig` object; omitted
@@ -181,62 +205,68 @@ pub extern "C" fn localsearch_free_string(string: *mut c_char) {
 /// Returns 4 if the JSON does not parse, 5 if it could not be saved.
 #[no_mangle]
 pub extern "C" fn localsearch_configure(config_json: *const c_char) -> i32 {
-    let json = match unsafe { str_arg(config_json) } {
-        Ok(s) => s,
-        Err(code) => return code,
-    };
-    let Ok(config) = serde_json::from_str::<EngineConfig>(json) else {
-        return 4;
-    };
+    guarded(PANICKED, || {
+        let json = match unsafe { str_arg(config_json) } {
+            Ok(s) => s,
+            Err(code) => return code,
+        };
+        let Ok(config) = serde_json::from_str::<EngineConfig>(json) else {
+            return 4;
+        };
 
-    let data_dir = Engine::default_data_dir();
-    if let Err(e) = config.save(&data_dir) {
-        log::error!("could not save configuration: {e:#}");
-        return 5;
-    }
-    // If the engine is not running yet it will read the file just written.
-    let already_running = ENGINE.get().is_some();
-    let Some(engine) = engine() else {
-        return 3;
-    };
-    if already_running {
-        if let Err(e) = engine.reconfigure(EngineConfig::load(&data_dir)) {
-            log::error!("could not apply configuration: {e:#}");
+        let data_dir = Engine::default_data_dir();
+        if let Err(e) = config.save(&data_dir) {
+            log::error!("could not save configuration: {e:#}");
             return 5;
         }
-    }
-    0
+        // If the engine is not running yet it will read the file just written.
+        let already_running = ENGINE.get().is_some();
+        let Some(engine) = engine() else {
+            return 3;
+        };
+        if already_running {
+            if let Err(e) = engine.reconfigure(EngineConfig::load(&data_dir)) {
+                log::error!("could not apply configuration: {e:#}");
+                return 5;
+            }
+        }
+        0
+    })
 }
 
 /// Report indexing progress. Starts the engine if it is not running yet.
 #[no_mangle]
 pub extern "C" fn localsearch_index_status(status: *mut IndexStatus) -> i32 {
-    if status.is_null() {
-        return 1;
-    }
-    let Some(engine) = engine() else {
-        return 3;
-    };
-    let current = engine.status();
-    unsafe {
-        *status = IndexStatus {
-            phase: current.phase as u32,
-            budget_exhausted: current.budget_exhausted as u32,
-            doc_count: current.doc_count,
-            work_done: current.work_done,
-            work_total: current.work_total,
-            elapsed_secs: current.elapsed_secs,
+    guarded(PANICKED, || {
+        if status.is_null() {
+            return 1;
+        }
+        let Some(engine) = engine() else {
+            return 3;
         };
-    }
-    0
+        let current = engine.status();
+        unsafe {
+            *status = IndexStatus {
+                phase: current.phase as u32,
+                budget_exhausted: current.budget_exhausted as u32,
+                doc_count: current.doc_count,
+                work_done: current.work_done,
+                work_total: current.work_total,
+                elapsed_secs: current.elapsed_secs,
+            };
+        }
+        0
+    })
 }
 
 /// Stop indexing and save the index. Call once, when the app is quitting.
 #[no_mangle]
 pub extern "C" fn localsearch_shutdown() {
-    if let Some(Some(engine)) = ENGINE.get() {
-        engine.shutdown();
-    }
+    guarded((), || {
+        if let Some(Some(engine)) = ENGINE.get() {
+            engine.shutdown();
+        }
+    })
 }
 
 #[cfg(test)]

@@ -95,7 +95,7 @@ impl BkTree {
 
 /// Compute Damerau-Levenshtein edit distance between two strings
 /// Operates on Unicode code points, not bytes
-fn damerau_levenshtein(a: &str, b: &str) -> usize {
+pub(crate) fn damerau_levenshtein(a: &str, b: &str) -> usize {
     let a_chars: Vec<char> = a.chars().collect();
     let b_chars: Vec<char> = b.chars().collect();
     let a_len = a_chars.len();

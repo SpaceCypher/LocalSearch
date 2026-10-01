@@ -1,5 +1,5 @@
 use super::*;
-use crate::fs::identity::{IdentityDb, DocId};
+use crate::fs::identity::IdentityDb;
 use crate::wal::writer::WalWriter;
 use std::fs;
 use tempfile::TempDir;

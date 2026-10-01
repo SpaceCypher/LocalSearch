@@ -11,7 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use xxhash_rust::xxh3::xxh3_64;
 
 /// File header identifying the segment format version
-const SEGMENT_MAGIC: &[u8] = b"LSSEG002";
+const SEGMENT_MAGIC: &[u8] = b"LSSEG003";
 
 /// Immutable segment file
 pub struct Segment {

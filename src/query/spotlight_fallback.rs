@@ -71,6 +71,7 @@ impl SpotlightFallback {
                     path: line,
                     score: 0.5,
                     source: ResultSource::Spotlight,
+                    exact: true,
                 });
                 if results.len() >= MAX_SPOTLIGHT_RESULTS {
                     break;

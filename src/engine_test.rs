@@ -465,3 +465,209 @@ fn test_snippet_handles_non_ascii_text() {
     let snippet = engine.snippet(file.to_str().unwrap(), "café").unwrap();
     assert_eq!(marked(&snippet), "Entrée du jour — crème brûlée 🍮 avec [café]");
 }
+
+// ─── Production hardening ─────────────────────────────────────────────────────
+
+#[test]
+fn test_typos_return_close_matches_not_everything() {
+    let fx = Fixture::new();
+    fx.write("report.txt", "");
+    // Names one or two edits away from the typo "reprot" but unrelated to it
+    for name in ["repo", "reboot", "depot", "repost", "retort", "remote", "resort", "rebook"] {
+        fx.write(&format!("{name}.txt"), "");
+    }
+    let engine = fx.indexed_engine();
+
+    let hits = engine.search("reprot");
+    assert_eq!(paths(&hits)[0], "report.txt");
+    // The transposition is found; the pile of two-edit neighbours is not dumped on the user
+    assert!(hits.len() <= 4, "{:?}", paths(&hits));
+}
+
+#[test]
+fn test_approximate_matches_do_not_dilute_real_ones() {
+    let fx = Fixture::new();
+    for i in 0..6 {
+        fx.write(&format!("report_{i}.txt"), "");
+    }
+    fx.write("repost.txt", "");
+    fx.write("deport.txt", "");
+    let engine = fx.indexed_engine();
+
+    let hits = engine.search("report");
+    assert_eq!(hits.len(), 6, "{:?}", paths(&hits));
+    assert!(paths(&hits).iter().all(|name| name.starts_with("report_")));
+}
+
+#[test]
+fn test_data_directory_is_private() {
+    let fx = Fixture::new();
+    let _engine = fx.indexed_engine();
+    let mode = fs::metadata(&fx.data_dir).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700, "index must not be readable by other users");
+}
+
+#[test]
+fn test_second_engine_cannot_write_the_same_index() {
+    let fx = Fixture::new();
+    fx.write("shared.txt", "");
+    let owner = fx.indexed_engine();
+    owner.snapshot().unwrap();
+
+    let intruder = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    let error = intruder.load().unwrap_err().to_string();
+    assert!(error.contains("in use by another LocalSearch process"), "{error}");
+    assert!(intruder.snapshot().is_err());
+
+    // It can still read what the owner saved...
+    assert_eq!(intruder.load_snapshot().unwrap(), 1);
+    assert_eq!(paths(&intruder.search("shared")), ["shared.txt"]);
+    // ...and shutting it down must not mark the owner's session as cleanly ended
+    intruder.shutdown();
+    assert!(!fx.data_dir.join(".clean_shutdown").exists());
+
+    // Once the owner lets go, the directory can be taken over
+    owner.shutdown();
+    let successor = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    assert!(successor.load().is_ok());
+}
+
+#[test]
+fn test_started_engine_falls_back_to_read_only_when_index_is_owned() {
+    let fx = Fixture::new();
+    fx.write("owned.txt", "");
+    let owner = fx.indexed_engine();
+    owner.snapshot().unwrap();
+
+    let second = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    second.start();
+    wait_until("the second engine is serving", || second.status().phase == Phase::Ready);
+    assert_eq!(paths(&second.search("owned")), ["owned.txt"]);
+
+    // It is not following the filesystem: that is the owner's job
+    fx.write("later.txt", "");
+    std::thread::sleep(Duration::from_millis(900));
+    assert!(second.search("later").is_empty());
+    second.shutdown();
+}
+
+#[test]
+fn test_unreadable_root_keeps_its_entries() {
+    let fx = Fixture::new();
+    let kept = fx.root.join("kept");
+    let volume = fx.root.join("volume");
+    fs::create_dir_all(&kept).unwrap();
+    fs::create_dir_all(&volume).unwrap();
+    fs::write(kept.join("here.txt"), "").unwrap();
+    fs::write(volume.join("offline.txt"), "").unwrap();
+    let config = EngineConfig { roots: vec![kept.clone(), volume.clone()], ..fx.config() };
+    let engine = Engine::open(&fx.data_dir, config).unwrap();
+    engine.load().unwrap();
+    engine.reconcile();
+    assert_eq!(engine.doc_count(), 2);
+
+    // The "volume" is unplugged: the root disappears entirely
+    let parked = fx.root.join("volume-unmounted");
+    fs::rename(&volume, &parked).unwrap();
+    engine.reconcile();
+    assert_eq!(paths(&engine.search("offline")), ["offline.txt"], "an unavailable root is not a deleted one");
+
+    // Plugged back in with the file really gone: now it is removed
+    fs::rename(&parked, &volume).unwrap();
+    fs::remove_file(volume.join("offline.txt")).unwrap();
+    engine.reconcile();
+    assert!(engine.search("offline").is_empty());
+    assert_eq!(engine.doc_count(), 1);
+}
+
+#[test]
+fn test_worker_recovers_from_a_panic() {
+    let fx = Fixture::new();
+    fx.write("resilient.txt", "");
+    let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    engine.panic_in_next_reconcile.store(true, Ordering::Relaxed);
+    engine.start();
+
+    wait_until("the worker has restarted and indexed", || {
+        engine.status().phase == Phase::Ready && !engine.search("resilient").is_empty()
+    });
+    // Queries and saving still work after the panic
+    assert!(!engine.panic_in_next_reconcile.load(Ordering::Relaxed));
+    engine.shutdown();
+    assert!(fx.data_dir.join("manifest.json").exists());
+}
+
+#[test]
+fn test_queries_survive_a_poisoned_lock() {
+    let fx = Fixture::new();
+    fx.write("still_here.txt", "");
+    let engine = fx.indexed_engine();
+
+    // A thread panics while holding the index lock
+    let poisoner = Arc::clone(&engine);
+    let _ = std::thread::spawn(move || {
+        let _guard = poisoner.state.write().unwrap();
+        panic!("poison the lock");
+    })
+    .join();
+    assert!(engine.state.is_poisoned());
+
+    assert_eq!(paths(&engine.search("still")), ["still_here.txt"]);
+    assert_eq!(engine.doc_count(), 1);
+}
+
+#[test]
+fn test_queries_do_not_write_metrics_synchronously() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "");
+    let engine = fx.indexed_engine();
+    engine.search("a");
+    engine.search("b");
+
+    // Timings are queued by the query and written later, off the query path
+    assert_eq!(engine.pending_metrics.lock().unwrap().len(), 2);
+    let recorded = engine.metrics.lock().unwrap().as_ref().unwrap().entry_count().unwrap();
+    assert_eq!(recorded, 0);
+
+    engine.flush_metrics();
+    assert!(engine.pending_metrics.lock().unwrap().is_empty());
+    assert_eq!(engine.metrics.lock().unwrap().as_ref().unwrap().entry_count().unwrap(), 2);
+}
+
+#[test]
+fn test_oversized_query_is_cut_not_crashed() {
+    let fx = Fixture::new();
+    fx.write("needle.txt", "");
+    let engine = fx.indexed_engine();
+
+    let huge = format!("needle {}", "x".repeat(100_000));
+    let started = Instant::now();
+    let hits = engine.search(&huge);
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(paths(&hits)[0], "needle.txt");
+}
+
+#[test]
+fn test_old_format_snapshot_is_rebuilt_not_trusted() {
+    let fx = Fixture::new();
+    fx.write("kept.txt", "");
+    {
+        let engine = fx.indexed_engine();
+        engine.shutdown();
+    }
+    // Rewrite the header as an older format version
+    let segment = fs::read_dir(&fx.data_dir)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == "seg"))
+        .unwrap();
+    let mut bytes = fs::read(&segment).unwrap();
+    bytes[..8].copy_from_slice(b"LSSEG002");
+    fs::write(&segment, bytes).unwrap();
+
+    let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    assert_eq!(engine.load().unwrap().0, 0);
+    engine.reconcile();
+    assert_eq!(paths(&engine.search("kept")), ["kept.txt"]);
+}

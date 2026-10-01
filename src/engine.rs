@@ -17,13 +17,18 @@
 //! and a reconcile walk picks up anything that changed while the app was not
 //! running. From then on FSEvents drive incremental updates, each logged to
 //! the WAL before it is applied, with periodic snapshots truncating the log.
+//!
+//! Failure policy: nothing here may take the host app down. Locks are taken
+//! poison-tolerantly, the worker restarts itself after a panic, and anything
+//! unreadable on disk is rebuilt from the filesystem rather than trusted.
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
-use std::os::unix::fs::MetadataExt;
+use std::os::fd::AsRawFd;
+use std::os::unix::fs::{MetadataExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
-use std::sync::{Arc, Mutex, RwLock};
+use std::sync::{Arc, Mutex, PoisonError, RwLock};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
@@ -73,6 +78,21 @@ const SNAPSHOT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
 const INDEX_SCORE_WEIGHT: f32 = 20.0;
 /// Boost per (log-scaled) past open of a result; one click outweighs index-score noise
 const CLICK_WEIGHT: f32 = 40.0;
+/// Approximate (typo-tolerant) matches are a fallback: they are shown only
+/// when fewer than this many results matched the query as typed...
+const APPROX_FALLBACK_BELOW: usize = 5;
+/// ...and then only the closest ones
+const APPROX_MAX: usize = 20;
+const APPROX_MIN_SHARE_OF_BEST: f32 = 0.5;
+/// Longer queries are cut here; nobody types a kilobyte into a search field
+const MAX_QUERY_CHARS: usize = 256;
+/// Queries slower than this are logged with a per-stage breakdown
+const SLOW_QUERY: Duration = Duration::from_millis(250);
+/// FSEvents can drop events under load; a periodic full reconcile bounds how
+/// long a missed change can stay missed
+const RECONCILE_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
+/// How many times the worker restarts after panicking before it gives up
+const MAX_WORKER_RESTARTS: u32 = 3;
 
 // ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -163,10 +183,7 @@ impl EngineConfig {
 
     pub fn save(&self, data_dir: &Path) -> Result<()> {
         fs::create_dir_all(data_dir)?;
-        let tmp = data_dir.join("config.json.tmp");
-        fs::write(&tmp, serde_json::to_vec_pretty(self)?)?;
-        fs::rename(tmp, data_dir.join("config.json"))?;
-        Ok(())
+        write_atomically(&data_dir.join("config.json"), &serde_json::to_vec_pretty(self)?)
     }
 
     /// Expand `~`, resolve symlinks (FSEvents reports resolved paths), drop
@@ -429,7 +446,12 @@ pub struct Engine {
     wal: Mutex<Option<WalWriter>>,
     extractor: Mutex<ExtractionClient>,
     metrics: Mutex<Option<MetricsCollector>>,
+    /// Query timings waiting to be written to `metrics`. Queries only push
+    /// here; the database write happens off the query path.
+    pending_metrics: Mutex<Vec<(Duration, usize)>>,
     last_query: Mutex<String>,
+    /// Exclusive lock on the data directory, held while this engine writes to it
+    dir_lock: Mutex<Option<fs::File>>,
 
     /// Seq of the last WAL entry written
     last_seq: AtomicU64,
@@ -448,6 +470,9 @@ pub struct Engine {
     stop: AtomicBool,
     reconfigured: AtomicBool,
     worker: Mutex<Option<JoinHandle<()>>>,
+    /// Test hook: make the next reconcile panic, to exercise worker recovery
+    #[cfg(test)]
+    panic_in_next_reconcile: AtomicBool,
 }
 
 impl Engine {
@@ -467,6 +492,10 @@ impl Engine {
     pub fn open(data_dir: &Path, config: EngineConfig) -> Result<Arc<Self>> {
         fs::create_dir_all(data_dir)
             .with_context(|| format!("creating data directory {}", data_dir.display()))?;
+        // The index contains the names and words of the user's files:
+        // nobody else on the machine gets to read it.
+        fs::set_permissions(data_dir, fs::Permissions::from_mode(0o700))
+            .with_context(|| format!("restricting access to {}", data_dir.display()))?;
         let config = config.normalized();
         let identity = IdentityDb::new(&data_dir.join("identity.db"))?;
         let metrics = MetricsCollector::new(data_dir.join("metrics.db"))
@@ -485,7 +514,9 @@ impl Engine {
             wal: Mutex::new(None),
             extractor: Mutex::new(ExtractionClient::new()),
             metrics: Mutex::new(metrics),
+            pending_metrics: Mutex::new(Vec::new()),
             last_query: Mutex::new(String::new()),
+            dir_lock: Mutex::new(None),
             last_seq: AtomicU64::new(0),
             generation: AtomicU64::new(0),
             dirty: AtomicU64::new(0),
@@ -498,11 +529,13 @@ impl Engine {
             stop: AtomicBool::new(false),
             reconfigured: AtomicBool::new(false),
             worker: Mutex::new(None),
+            #[cfg(test)]
+            panic_in_next_reconcile: AtomicBool::new(false),
         }))
     }
 
     pub fn config(&self) -> EngineConfig {
-        self.config.read().unwrap().clone()
+        self.config.read().unwrap_or_else(PoisonError::into_inner).clone()
     }
 
     pub fn data_dir(&self) -> &Path {
@@ -527,7 +560,7 @@ impl Engine {
     }
 
     pub fn doc_count(&self) -> usize {
-        self.state.read().unwrap().executor.delta_index.live_doc_count()
+        self.state.read().unwrap_or_else(PoisonError::into_inner).executor.delta_index.live_doc_count()
     }
 
     // ─── Loading ──────────────────────────────────────────────────────────────
@@ -580,7 +613,7 @@ impl Engine {
             .unwrap_or_default();
 
         let loaded = paths.len();
-        *self.state.write().unwrap() = state;
+        *self.state.write().unwrap_or_else(PoisonError::into_inner) = state;
         if loaded > 0 {
             self.warming.store(false, Ordering::Relaxed);
         }
@@ -592,6 +625,7 @@ impl Engine {
     /// Returns (documents loaded from snapshot, WAL entries re-applied).
     pub fn load(&self) -> Result<(usize, usize)> {
         self.set_phase(Phase::Loading, 0);
+        self.lock_data_dir()?;
         match startup::detect_startup_path(&self.data_dir)? {
             StartupPath::FirstLaunch => startup::first_launch(&self.data_dir)?,
             StartupPath::WarmRestart => startup::warm_restart(&self.data_dir)?,
@@ -621,8 +655,32 @@ impl Engine {
             self.apply_paths(paths, false);
         }
 
-        *self.wal.lock().unwrap() = Some(self.open_wal()?);
+        *self.wal.lock().unwrap_or_else(PoisonError::into_inner) = Some(self.open_wal()?);
         Ok((loaded, replayed))
+    }
+
+    /// Two processes writing one index would corrupt it. The lock is released
+    /// by `shutdown`, or by the OS when the process exits.
+    fn lock_data_dir(&self) -> Result<()> {
+        let mut guard = self.dir_lock.lock().unwrap_or_else(PoisonError::into_inner);
+        if guard.is_some() {
+            return Ok(());
+        }
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(false)
+            .open(self.data_dir.join("lock"))?;
+        const LOCK_EX: i32 = 2;
+        const LOCK_NB: i32 = 4;
+        if unsafe { flock(file.as_raw_fd(), LOCK_EX | LOCK_NB) } != 0 {
+            anyhow::bail!(
+                "the index in {} is in use by another LocalSearch process",
+                self.data_dir.display()
+            );
+        }
+        *guard = Some(file);
+        Ok(())
     }
 
     fn wal_path(&self) -> PathBuf {
@@ -637,7 +695,7 @@ impl Engine {
 
     /// The DocId of `path` if the index already holds this exact version of it.
     fn unchanged(&self, path: &str, metadata: &fs::Metadata) -> Option<DocId> {
-        let state = self.state.read().unwrap();
+        let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
         let doc_id = *state.path_ids.get(path)?;
         let doc = state.docs().get(&doc_id)?;
         (doc.mtime_ns == mtime_ns(metadata) && doc.size == metadata.len()).then_some(doc_id)
@@ -670,13 +728,12 @@ impl Engine {
         let doc_len = (filename_tokens.len() + dir_tokens.len()) as u32;
         let mut postings: HashMap<String, Posting> = HashMap::new();
         for (terms, field) in [(filename_tokens, FIELD_FILENAME), (dir_tokens, FIELD_PATH)] {
-            for (position, term) in terms.into_iter().enumerate() {
+            for term in terms {
                 let posting = postings
                     .entry(term)
                     .or_insert_with(|| Posting::new(doc_id, 0, 0));
                 posting.term_freq += 1;
                 posting.field_mask |= field;
-                posting.positions.push(position as u32);
             }
         }
 
@@ -705,7 +762,7 @@ impl Engine {
             return;
         }
         let changes = (batch.len() + removed.len()) as u64;
-        let mut guard = self.state.write().unwrap();
+        let mut guard = self.state.write().unwrap_or_else(PoisonError::into_inner);
         let state = &mut *guard;
 
         for prepared in &batch {
@@ -748,12 +805,28 @@ impl Engine {
         let config = self.config();
         let tokenizer = Tokenizer::new();
         self.set_phase(Phase::Scanning, 0);
+        #[cfg(test)]
+        if self.panic_in_next_reconcile.swap(false, Ordering::Relaxed) {
+            panic!("injected reconcile failure");
+        }
 
         let mut seen: HashSet<DocId> = HashSet::new();
         let mut batch: Vec<Prepared> = Vec::new();
         let mut aborted = false;
 
-        let _ = self.identity.lock().unwrap().begin_batch();
+        // A root that cannot be read right now (unmounted volume, permission
+        // revoked) is not evidence that its files were deleted.
+        let unavailable: Vec<String> = config
+            .roots
+            .iter()
+            .filter(|root| fs::read_dir(root).is_err())
+            .map(|root| format!("{}/", root.to_string_lossy()))
+            .collect();
+        for root in &unavailable {
+            log::warn!("{root} is not readable; keeping its indexed entries");
+        }
+
+        let _ = self.identity.lock().unwrap_or_else(PoisonError::into_inner).begin_batch();
         for root in &config.roots {
             walk_root(root, &config, |path, metadata| {
                 if self.stop.load(Ordering::Relaxed) || self.reconfigured.load(Ordering::Relaxed) {
@@ -771,7 +844,7 @@ impl Engine {
                 }
                 if batch.len() >= COMMIT_BATCH {
                     self.commit(std::mem::take(&mut batch), HashSet::new());
-                    let mut identity = self.identity.lock().unwrap();
+                    let mut identity = self.identity.lock().unwrap_or_else(PoisonError::into_inner);
                     let _ = identity.commit_batch();
                     let _ = identity.begin_batch();
                 }
@@ -782,19 +855,25 @@ impl Engine {
             }
         }
         self.commit(batch, HashSet::new());
-        let _ = self.identity.lock().unwrap().commit_batch();
+        let _ = self.identity.lock().unwrap_or_else(PoisonError::into_inner).commit_batch();
 
         // Only a complete walk tells us what is gone.
         if !aborted {
             let stale: HashSet<DocId> = {
-                let state = self.state.read().unwrap();
-                state.docs().keys().filter(|id| !seen.contains(id)).copied().collect()
+                let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
+                state
+                    .docs()
+                    .values()
+                    .filter(|doc| !seen.contains(&doc.doc_id))
+                    .filter(|doc| !unavailable.iter().any(|root| doc.path.starts_with(root)))
+                    .map(|doc| doc.doc_id)
+                    .collect()
             };
             if !stale.is_empty() {
                 log::info!("reconcile: removing {} documents no longer on disk or in scope", stale.len());
             }
             self.commit(Vec::new(), stale);
-            self.state.write().unwrap().executor.path_trie.rebuild_prefix_cache(20);
+            self.state.write().unwrap_or_else(PoisonError::into_inner).executor.path_trie.rebuild_prefix_cache(20);
             self.warming.store(false, Ordering::Relaxed);
         }
     }
@@ -802,19 +881,18 @@ impl Engine {
     /// Extract and index the content of one document. Returns false once the
     /// memory budget is exhausted.
     fn index_one_content(&self, tokenizer: &Tokenizer, doc_id: DocId, path: &str) -> bool {
-        if self.state.read().unwrap().executor.delta_index.is_over_budget() {
+        if self.state.read().unwrap_or_else(PoisonError::into_inner).executor.delta_index.is_over_budget() {
             if !self.budget_exhausted.swap(true, Ordering::Relaxed) {
                 log::warn!("index memory budget reached; remaining file contents are not indexed");
             }
             return false;
         }
 
-        let extracted = self.extractor.lock().unwrap().extract(path);
+        let extracted = self.extractor.lock().unwrap_or_else(PoisonError::into_inner).extract(path);
         let (postings, token_count, content_hash) = match extracted {
             Ok(result) if !result.text.is_empty() => {
                 let tokens = tokenizer.tokenize(&result.text);
                 let token_count = tokens.len() as u32;
-                // Positions are not kept for content: they would dominate memory
                 let mut postings: HashMap<String, Posting> = HashMap::new();
                 for token in tokens {
                     postings
@@ -827,7 +905,7 @@ impl Engine {
             _ => (HashMap::new(), 0, 0),
         };
 
-        let mut state = self.state.write().unwrap();
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         // The file may have been removed or replaced while we were reading it
         let still_current = state.docs().get(&doc_id).is_some_and(|doc| doc.path == path && !doc.content_indexed);
         if still_current {
@@ -848,7 +926,7 @@ impl Engine {
             return;
         }
         let queue: Vec<(DocId, String)> = {
-            let state = self.state.read().unwrap();
+            let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
             state
                 .docs()
                 .values()
@@ -872,11 +950,11 @@ impl Engine {
             }
             self.work_done.fetch_add(1, Ordering::Relaxed);
             if index % 64 == 63 {
-                self.state.write().unwrap().executor.refresh_stats();
+                self.state.write().unwrap_or_else(PoisonError::into_inner).executor.refresh_stats();
                 pump();
             }
         }
-        self.state.write().unwrap().executor.refresh_stats();
+        self.state.write().unwrap_or_else(PoisonError::into_inner).executor.refresh_stats();
     }
 
     // ─── Live changes ─────────────────────────────────────────────────────────
@@ -909,7 +987,7 @@ impl Engine {
             match metadata {
                 None => {
                     // Gone: the path itself and, if it was a directory, everything under it
-                    let state = self.state.read().unwrap();
+                    let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
                     if let Some(doc_id) = state.path_ids.get(path_str) {
                         removed.insert(*doc_id);
                     }
@@ -925,7 +1003,7 @@ impl Engine {
                     if self.unchanged(path_str, &metadata).is_some() {
                         continue;
                     }
-                    let is_new = !self.state.read().unwrap().path_ids.contains_key(path_str);
+                    let is_new = !self.state.read().unwrap_or_else(PoisonError::into_inner).path_ids.contains_key(path_str);
                     batch.extend(self.prepare(&tokenizer, &config, &path, &metadata));
 
                     // A directory that appears whole (moved or copied in) may
@@ -963,12 +1041,12 @@ impl Engine {
                     break;
                 }
             }
-            self.state.write().unwrap().executor.refresh_stats();
+            self.state.write().unwrap_or_else(PoisonError::into_inner).executor.refresh_stats();
         }
     }
 
     fn log_change(&self, path: &str, metadata: Option<&fs::Metadata>) {
-        let guard = self.wal.lock().unwrap();
+        let guard = self.wal.lock().unwrap_or_else(PoisonError::into_inner);
         let Some(wal) = guard.as_ref() else { return };
         if path.len() > u16::MAX as usize {
             return;
@@ -1001,9 +1079,12 @@ impl Engine {
     /// truncate the WAL it supersedes. Tombstoned data is not carried over,
     /// so this doubles as compaction.
     pub fn snapshot(&self) -> Result<()> {
+        if self.dir_lock.lock().unwrap_or_else(PoisonError::into_inner).is_none() {
+            anyhow::bail!("this engine does not own {} and will not write to it", self.data_dir.display());
+        }
         // Everything logged so far is applied: logging and applying happen
         // together on the worker thread, which is also the thread snapshotting.
-        if let Some(wal) = self.wal.lock().unwrap().as_ref() {
+        if let Some(wal) = self.wal.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
             wal.flush()?;
         }
         let snapshot_seq = self.last_seq.load(Ordering::Relaxed);
@@ -1011,7 +1092,7 @@ impl Engine {
         let name = format!("segment_{generation:06}.seg");
 
         let (builder, doc_count, signals) = {
-            let state = self.state.read().unwrap();
+            let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
             (
                 SegmentBuilder::from_delta(&state.executor.delta_index),
                 state.executor.delta_index.live_doc_count() as u64,
@@ -1027,9 +1108,7 @@ impl Engine {
             doc_count,
             written_at_secs: SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs()),
         };
-        let tmp = self.data_dir.join("manifest.json.tmp");
-        fs::write(&tmp, serde_json::to_vec_pretty(&manifest)?)?;
-        fs::rename(&tmp, self.data_dir.join("manifest.json"))?;
+        write_atomically(&self.data_dir.join("manifest.json"), &serde_json::to_vec_pretty(&manifest)?)?;
         self.generation.store(generation, Ordering::Relaxed);
 
         // The manifest now points at the new segment; older ones and the WAL
@@ -1041,14 +1120,14 @@ impl Engine {
             }
         }
         {
-            let mut wal = self.wal.lock().unwrap();
+            let mut wal = self.wal.lock().unwrap_or_else(PoisonError::into_inner);
             if wal.is_some() {
                 *wal = None;
                 fs::File::create(self.wal_path())?;
                 *wal = Some(self.open_wal()?);
             }
         }
-        fs::write(self.data_dir.join("signals.json"), signals)?;
+        write_atomically(&self.data_dir.join("signals.json"), &signals)?;
 
         self.dirty.store(0, Ordering::Relaxed);
         log::info!("snapshot {name}: {doc_count} documents");
@@ -1060,21 +1139,56 @@ impl Engine {
     /// Run the engine in the background: load, reconcile, extract content,
     /// then follow filesystem events until `shutdown`.
     pub fn start(self: &Arc<Self>) {
-        let mut worker = self.worker.lock().unwrap();
+        let mut worker = self.worker.lock().unwrap_or_else(PoisonError::into_inner);
         if worker.is_some() {
             return;
         }
         let engine = Arc::clone(self);
         *worker = std::thread::Builder::new()
             .name("localsearch-indexer".to_string())
-            .spawn(move || engine.run())
+            .spawn(move || engine.run_supervised())
             .map_err(|e| log::error!("could not start indexer thread: {e}"))
             .ok();
+    }
+
+    /// Run the worker; if it panics, log it and start over from what is on
+    /// disk. A bug in indexing must degrade to "index is a little stale",
+    /// never to a crashed app.
+    fn run_supervised(&self) {
+        let mut restarts = 0;
+        loop {
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.run()));
+            if outcome.is_ok() || self.stop.load(Ordering::Relaxed) {
+                return;
+            }
+            restarts += 1;
+            if restarts > MAX_WORKER_RESTARTS {
+                log::error!("indexer panicked {restarts} times; live updates are off until restart");
+                // Whatever is in memory stays searchable
+                self.warming.store(false, Ordering::Relaxed);
+                self.set_phase(Phase::Ready, 0);
+                return;
+            }
+            log::error!("indexer panicked; restarting ({restarts}/{MAX_WORKER_RESTARTS})");
+            std::thread::sleep(Duration::from_secs(2));
+        }
     }
 
     fn run(&self) {
         // Indexing must never compete with the user's foreground I/O
         set_io_policy(IoPolicy::Throttle);
+
+        // Another process owns this index: serve what it last saved, read-only.
+        // Indexing here as well would have two writers on one set of files.
+        if let Err(e) = self.lock_data_dir() {
+            log::error!("{e:#}; this process will search the saved index without updating it");
+            if let Err(e) = self.load_snapshot() {
+                log::error!("could not load the saved index: {e:#}");
+            }
+            self.warming.store(false, Ordering::Relaxed);
+            self.set_phase(Phase::Ready, 0);
+            return;
+        }
 
         match self.load() {
             Ok((loaded, replayed)) => log::info!("loaded {loaded} documents, replayed {replayed} WAL entries"),
@@ -1130,8 +1244,14 @@ impl Engine {
         let mut pending: Vec<PathBuf> = Vec::new();
         let mut oldest_pending = Instant::now();
         let mut last_snapshot = Instant::now();
+        let entered = Instant::now();
 
         while !self.stop.load(Ordering::Relaxed) && !self.reconfigured.load(Ordering::Relaxed) {
+            // Returning sends the worker round its loop: re-watch, reconcile
+            if entered.elapsed() >= RECONCILE_INTERVAL {
+                return;
+            }
+            self.flush_metrics();
             match events.recv_timeout(EVENT_DEBOUNCE) {
                 Ok(event) => {
                     if pending.is_empty() {
@@ -1159,9 +1279,26 @@ impl Engine {
                     || dirty >= SNAPSHOT_MAX_DIRTY);
             if due {
                 self.save_if_dirty();
-                self.state.write().unwrap().executor.path_trie.rebuild_prefix_cache(20);
+                self.state.write().unwrap_or_else(PoisonError::into_inner).executor.path_trie.rebuild_prefix_cache(20);
                 last_snapshot = Instant::now();
             }
+        }
+    }
+
+    /// Write queued query timings to the metrics database. Called from the
+    /// worker and before reading stats, never from a query.
+    fn flush_metrics(&self) {
+        let pending = std::mem::take(&mut *self.pending_metrics.lock().unwrap_or_else(PoisonError::into_inner));
+        if pending.is_empty() {
+            return;
+        }
+        let metrics = self.metrics.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(collector) = metrics.as_ref() {
+            for (latency, result_count) in pending {
+                let _ = collector.record_query(latency, result_count);
+            }
+            let _ = collector.cleanup_old_entries();
+            let _ = collector.enforce_size_cap();
         }
     }
 
@@ -1172,12 +1309,12 @@ impl Engine {
     pub fn reconfigure(&self, config: EngineConfig) -> Result<()> {
         let config = config.normalized();
         {
-            let mut state = self.state.write().unwrap();
+            let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
             state.executor.spotlight_fallback.set_roots(config.roots.clone());
             state.executor.delta_index.set_memory_budget(config.memory_budget_mb * 1024 * 1024);
         }
         let changed = {
-            let mut current = self.config.write().unwrap();
+            let mut current = self.config.write().unwrap_or_else(PoisonError::into_inner);
             let changed = *current != config;
             *current = config;
             changed
@@ -1191,13 +1328,18 @@ impl Engine {
     /// Stop the worker, save the index, and mark the shutdown as clean.
     pub fn shutdown(&self) {
         self.stop.store(true, Ordering::Relaxed);
-        if let Some(worker) = self.worker.lock().unwrap().take() {
+        if let Some(worker) = self.worker.lock().unwrap_or_else(PoisonError::into_inner).take() {
             let _ = worker.join();
         }
         self.save_if_dirty();
-        *self.wal.lock().unwrap() = None;
-        if let Err(e) = fs::write(self.data_dir.join(".clean_shutdown"), b"") {
-            log::error!("could not write clean-shutdown marker: {e}");
+        self.flush_metrics();
+        *self.wal.lock().unwrap_or_else(PoisonError::into_inner) = None;
+        // Only an engine that owned the directory may vouch for its state
+        let owned = self.dir_lock.lock().unwrap_or_else(PoisonError::into_inner).take().is_some();
+        if owned {
+            if let Err(e) = fs::write(self.data_dir.join(".clean_shutdown"), b"") {
+                log::error!("could not write clean-shutdown marker: {e}");
+            }
         }
     }
 
@@ -1211,7 +1353,9 @@ impl Engine {
         if query.is_empty() {
             return Vec::new();
         }
-        *self.last_query.lock().unwrap() = query.to_string();
+        let query: String = query.chars().take(MAX_QUERY_CHARS).collect();
+        let query = query.as_str();
+        *self.last_query.lock().unwrap_or_else(PoisonError::into_inner) = query.to_string();
 
         let query_lc = query.to_lowercase();
         let query_tokens = tokenize_query(query);
@@ -1219,16 +1363,32 @@ impl Engine {
         // on the fragments would only add noise.
         let literal = query_lc.contains('.') || query_lc.contains('/');
 
-        let state = self.state.read().unwrap();
-        let mut scores: HashMap<DocId, (f32, ResultSource)> = HashMap::new();
+        let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
+        let lock_wait = started.elapsed();
+
+        /// A candidate's score and whether it matched the query as typed
+        struct Candidate {
+            score: f32,
+            exact: bool,
+            source: ResultSource,
+        }
+        let mut candidates: HashMap<DocId, Candidate> = HashMap::new();
 
         if !literal {
             if let Ok(parsed) = Query::parse(query) {
                 for result in state.executor.execute(parsed, None).unwrap_or_default() {
-                    scores.insert(result.doc_id, (result.score * INDEX_SCORE_WEIGHT, result.source));
+                    candidates.insert(
+                        result.doc_id,
+                        Candidate {
+                            score: result.score * INDEX_SCORE_WEIGHT,
+                            exact: result.exact,
+                            source: result.source,
+                        },
+                    );
                 }
             }
         }
+        let index_done = started.elapsed();
 
         // Filename matching over every document, in memory and in parallel.
         let now_ns = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
@@ -1247,23 +1407,54 @@ impl Engine {
             })
             .collect();
         for (doc_id, score) in lexical {
-            scores.entry(doc_id).or_insert((0.0, ResultSource::LocalIndex)).0 += score;
+            let candidate = candidates
+                .entry(doc_id)
+                .or_insert(Candidate { score: 0.0, exact: true, source: ResultSource::LocalIndex });
+            candidate.score += score;
+            // The query text appears in the name: that is a match as typed
+            candidate.exact = true;
         }
+        let scan_done = started.elapsed();
 
-        let mut hits: Vec<SearchHit> = scores
-            .into_iter()
-            .filter_map(|(doc_id, (score, source))| {
-                let doc = state.docs().get(&doc_id)?;
-                // Files opened from results before rank higher next time
-                let clicks = state.signals.hot_paths.get(&doc.path).copied().unwrap_or(0);
-                Some(SearchHit {
-                    doc_id: doc_id.0,
-                    path: doc.path.clone(),
-                    score: score + CLICK_WEIGHT * (1.0 + clicks as f32).ln(),
-                    source,
-                })
+        let to_hit = |doc_id: &DocId, candidate: &Candidate| -> Option<SearchHit> {
+            let doc = state.docs().get(doc_id)?;
+            // Files opened from results before rank higher next time
+            let clicks = state.signals.hot_paths.get(&doc.path).copied().unwrap_or(0);
+            Some(SearchHit {
+                doc_id: doc_id.0,
+                path: doc.path.clone(),
+                score: candidate.score + CLICK_WEIGHT * (1.0 + clicks as f32).ln(),
+                source: candidate.source,
             })
+        };
+        let by_score = |a: &SearchHit, b: &SearchHit| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+                .then_with(|| a.path.cmp(&b.path))
+        };
+
+        let mut hits: Vec<SearchHit> = candidates
+            .iter()
+            .filter(|(_, candidate)| candidate.exact)
+            .filter_map(|(doc_id, candidate)| to_hit(doc_id, candidate))
             .collect();
+
+        // Approximate matches only stand in when the query as typed found
+        // little, and then only the ones close to the best of them.
+        if hits.len() < APPROX_FALLBACK_BELOW {
+            let mut approximate: Vec<SearchHit> = candidates
+                .iter()
+                .filter(|(_, candidate)| !candidate.exact)
+                .filter_map(|(doc_id, candidate)| to_hit(doc_id, candidate))
+                .collect();
+            approximate.sort_by(by_score);
+            if let Some(best) = approximate.first().map(|hit| hit.score) {
+                approximate.retain(|hit| hit.score >= best * APPROX_MIN_SHARE_OF_BEST);
+                approximate.truncate(APPROX_MAX);
+                hits.extend(approximate);
+            }
+        }
 
         if self.warming.load(Ordering::Relaxed) && hits.len() < 5 {
             let known: HashSet<String> = hits.iter().map(|hit| hit.path.clone()).collect();
@@ -1280,18 +1471,25 @@ impl Engine {
         }
         drop(state);
 
-        hits.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-                .then_with(|| a.path.cmp(&b.path))
-        });
+        hits.sort_by(by_score);
         hits.truncate(MAX_RESULTS);
 
-        if let Ok(metrics) = self.metrics.try_lock() {
-            if let Some(collector) = metrics.as_ref() {
-                let _ = collector.record_query(started.elapsed(), hits.len());
-            }
+        // Timings are queued, not written: no disk I/O on the query path
+        let elapsed = started.elapsed();
+        self.pending_metrics
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push((elapsed, hits.len()));
+        if elapsed >= SLOW_QUERY {
+            log::warn!(
+                "slow query ({} chars): {:?} total; lock wait {:?}, index {:?}, name scan {:?}, assemble {:?}",
+                query.chars().count(),
+                elapsed,
+                lock_wait,
+                index_done - lock_wait,
+                scan_done - index_done,
+                elapsed - scan_done,
+            );
         }
         hits
     }
@@ -1308,7 +1506,7 @@ impl Engine {
             return None;
         }
         // Only files the index knows about; this is not a general file reader
-        if !self.state.read().unwrap().path_ids.contains_key(path) {
+        if !self.state.read().unwrap_or_else(PoisonError::into_inner).path_ids.contains_key(path) {
             return None;
         }
         let tokenizer = Tokenizer::new();
@@ -1326,14 +1524,14 @@ impl Engine {
             return None;
         }
 
-        let text = self.extractor.lock().unwrap().extract(path).ok()?.text;
+        let text = self.extractor.lock().unwrap_or_else(PoisonError::into_inner).extract(path).ok()?.text;
         build_snippet(&text, &words, &stems, &tokenizer)
     }
 
     /// The user opened `path` from the results of the most recent query.
     pub fn record_click(&self, path: &str) {
-        let query = self.last_query.lock().unwrap().to_lowercase();
-        let mut state = self.state.write().unwrap();
+        let query = self.last_query.lock().unwrap_or_else(PoisonError::into_inner).to_lowercase();
+        let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
         state.executor.ranker.record_click(PathBuf::from(path));
         state.signals.record_click(&query, path);
         self.dirty.fetch_add(1, Ordering::Relaxed);
@@ -1342,7 +1540,7 @@ impl Engine {
     // ─── Health ───────────────────────────────────────────────────────────────
 
     pub fn stats(&self) -> EngineStats {
-        let state = self.state.read().unwrap();
+        let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
         let delta = &state.executor.delta_index;
 
         let (mut eligible, mut processed) = (0usize, 0usize);
@@ -1380,7 +1578,8 @@ impl Engine {
             .min()
             .unwrap_or(0);
 
-        let metrics = self.metrics.lock().unwrap();
+        self.flush_metrics();
+        let metrics = self.metrics.lock().unwrap_or_else(PoisonError::into_inner);
         let (query_p50_ms, query_p99_ms) = metrics
             .as_ref()
             .and_then(|collector| collector.get_latency_stats().ok())
@@ -1408,6 +1607,22 @@ impl Engine {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+extern "C" {
+    fn flock(fd: std::os::raw::c_int, operation: std::os::raw::c_int) -> std::os::raw::c_int;
+}
+
+/// Write a file so that a crash leaves either the old or the new version,
+/// never a torn one: temp file, fsync, rename.
+fn write_atomically(path: &Path, bytes: &[u8]) -> Result<()> {
+    use std::io::Write;
+    let tmp = path.with_extension("tmp");
+    let mut file = fs::File::create(&tmp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
 
 fn mtime_ns(metadata: &fs::Metadata) -> u64 {
     (metadata.mtime().max(0) as u64) * 1_000_000_000 + metadata.mtime_nsec().max(0) as u64

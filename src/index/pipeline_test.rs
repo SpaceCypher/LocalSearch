@@ -101,7 +101,6 @@ fn test_wal_to_delta_index_pipeline() {
                     doc_id: DocId(entry.doc_id),
                     term_freq: 1,
                     field_mask: 0x01, // FIELD_FILENAME
-                    positions: vec![token.position],
                 },
             );
         }

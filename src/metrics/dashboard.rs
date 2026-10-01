@@ -1,4 +1,3 @@
-use crate::metrics::collector::IntegrityReport;
 
 pub struct HealthState {
     pub memory_state: String,
