@@ -37,10 +37,92 @@ impl PowerMonitor {
     }
 }
 
+impl PowerMonitor {
+    /// Sample the machine's current thermal and power state.
+    pub fn current() -> Self {
+        Self {
+            thermal_state: read_thermal_state(),
+            on_battery: read_on_battery(),
+        }
+    }
+
+    pub fn thermal_state(&self) -> ThermalState {
+        self.thermal_state
+    }
+
+    pub fn on_battery(&self) -> bool {
+        self.on_battery
+    }
+}
+
+/// `NSProcessInfo.processInfo.thermalState`
 #[cfg(target_os = "macos")]
-pub fn set_io_policy(_policy: IoPolicy) {
-    // setiopolicy_np stub for macOS
-    // In production, this would call libc::setiopolicy_np
+fn read_thermal_state() -> ThermalState {
+    use objc2::msg_send;
+    use objc2::runtime::{AnyClass, AnyObject};
+
+    let Some(class) = AnyClass::get("NSProcessInfo") else {
+        return ThermalState::Nominal;
+    };
+    let state: isize = unsafe {
+        let info: *mut AnyObject = msg_send![class, processInfo];
+        if info.is_null() {
+            return ThermalState::Nominal;
+        }
+        msg_send![info, thermalState]
+    };
+    match state {
+        1 => ThermalState::Fair,
+        2 => ThermalState::Serious,
+        3 => ThermalState::Critical,
+        _ => ThermalState::Nominal,
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_thermal_state() -> ThermalState {
+    ThermalState::Nominal
+}
+
+/// True when `pmset -g batt` reports the machine is drawing from its battery.
+#[cfg(target_os = "macos")]
+fn read_on_battery() -> bool {
+    std::process::Command::new("/usr/bin/pmset")
+        .args(["-g", "batt"])
+        .output()
+        .map(|out| String::from_utf8_lossy(&out.stdout).contains("'Battery Power'"))
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn read_on_battery() -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn setiopolicy_np(iotype: std::os::raw::c_int, scope: std::os::raw::c_int, policy: std::os::raw::c_int) -> std::os::raw::c_int;
+}
+
+/// Set the disk I/O priority of the calling thread (`setiopolicy_np`).
+/// Returns false if the kernel rejected the request.
+#[cfg(target_os = "macos")]
+pub fn set_io_policy(policy: IoPolicy) -> bool {
+    const IOPOL_TYPE_DISK: std::os::raw::c_int = 0;
+    const IOPOL_SCOPE_THREAD: std::os::raw::c_int = 1;
+    const IOPOL_DEFAULT: std::os::raw::c_int = 0;
+    const IOPOL_THROTTLE: std::os::raw::c_int = 3;
+
+    let value = match policy {
+        IoPolicy::Normal => IOPOL_DEFAULT,
+        IoPolicy::Throttle => IOPOL_THROTTLE,
+    };
+    unsafe { setiopolicy_np(IOPOL_TYPE_DISK, IOPOL_SCOPE_THREAD, value) == 0 }
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_io_policy(_policy: IoPolicy) -> bool {
+    false
 }
 
 #[cfg(test)]
@@ -65,10 +147,18 @@ mod tests {
         assert!(monitor.should_compact());
     }
 
+    #[test]
+    fn test_current_state_is_readable() {
+        // Just exercises the real system probes; any state is valid.
+        let monitor = PowerMonitor::current();
+        let _ = (monitor.thermal_state(), monitor.on_battery(), monitor.should_compact());
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn test_io_throttle_set_on_background_threads() {
-        // Verify setiopolicy_np called without panic
-        set_io_policy(IoPolicy::Throttle);
+        // The kernel accepts the policy for this thread
+        assert!(set_io_policy(IoPolicy::Throttle));
+        assert!(set_io_policy(IoPolicy::Normal));
     }
 }

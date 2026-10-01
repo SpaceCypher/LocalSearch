@@ -20,11 +20,11 @@ pub struct SearchResult {
 const MAX_RESULTS: usize = 100;
 
 pub struct QueryExecutor {
-    delta_index: DeltaIndex,
-    bk_tree: BkTree,
-    path_trie: PathTrie,
-    trigram_index: TrigramIndex,
-    phonetic_index: HashMap<String, Vec<String>>, // phonetic code → terms
+    pub(crate) delta_index: DeltaIndex,
+    pub(crate) bk_tree: BkTree,
+    pub(crate) path_trie: PathTrie,
+    pub(crate) trigram_index: TrigramIndex,
+    pub(crate) phonetic_index: HashMap<String, Vec<String>>, // phonetic code → terms
     pub ranker: Ranker,
     tokenizer: Tokenizer,
     pub spotlight_fallback: crate::query::spotlight_fallback::SpotlightFallback,
@@ -39,8 +39,8 @@ impl QueryExecutor {
         trigram_index: TrigramIndex,
         phonetic_index: HashMap<String, Vec<String>>,
     ) -> Self {
-        let total_docs = 1000; // TODO: get from index
-        let avg_doc_len = 50.0; // TODO: calculate from index
+        let total_docs = delta_index.live_doc_count().max(1) as u64;
+        let avg_doc_len = delta_index.avg_doc_len();
         Self {
             delta_index,
             bk_tree,
@@ -54,26 +54,33 @@ impl QueryExecutor {
         }
     }
 
+    /// Recalibrate BM25 against the current corpus. Call after the index changes.
+    pub fn refresh_stats(&mut self) {
+        self.ranker.scorer.set_stats(
+            self.delta_index.live_doc_count() as u64,
+            self.delta_index.avg_doc_len(),
+        );
+    }
+
     pub fn execute(&self, query: Query, cancel_token: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>) -> Result<Vec<SearchResult>, String> {
         // Check cancellation early
         let is_cancelled = || {
             cancel_token.as_ref().map_or(false, |t| t.load(std::sync::atomic::Ordering::Relaxed))
         };
 
-        // Step 0: Check prefix cache (fast path)
+        let mut merged_scores: HashMap<DocId, f32> = HashMap::new();
+
+        // Step 0: Prefix cache seeds candidates for short single-token queries.
+        // They are ranked with everything else in Step 3 rather than returned as-is.
         if query.tokens.len() == 1 && query.scope.is_none() && query.filters.is_empty() {
-            if let Some(doc_ids) = self.path_trie.prefix_cache_lookup(&query.tokens[0]) {
-                let results: Vec<SearchResult> = doc_ids.iter().filter_map(|doc_id| {
-                    self.delta_index.documents.get(doc_id).map(|doc| SearchResult {
-                        doc_id: *doc_id,
-                        path: doc.path.clone(),
-                        score: 1.0, 
-                        source: ResultSource::LocalIndex,
-                    })
-                }).collect();
-                
-                if !results.is_empty() {
-                    return Ok(results);
+            let prefix = query.tokens[0].to_lowercase();
+            if let Some(doc_ids) = self.path_trie.prefix_cache_lookup(&prefix) {
+                for doc_id in doc_ids {
+                    let Some(doc) = self.delta_index.documents.get(&doc_id) else { continue };
+                    let filename = doc.path.rsplit('/').next().unwrap_or("").to_lowercase();
+                    if filename.starts_with(&prefix) {
+                        merged_scores.insert(doc_id, 1.0);
+                    }
                 }
             }
         }
@@ -95,8 +102,6 @@ impl QueryExecutor {
         }
 
         // Step 2: Merge results and apply bonuses
-        let mut merged_scores: HashMap<DocId, f32> = HashMap::new();
-        
         for results in all_provider_results {
             for res in results {
                 *merged_scores.entry(res.doc_id).or_insert(0.0) += res.score;
@@ -143,15 +148,18 @@ impl QueryExecutor {
                 final_score *= self.ranker.calculate_proximity_boost(&doc.path);
 
                 let lower_path = doc.path.to_lowercase();
+                let mut matched_query_tokens = 0;
                 for token in &query.tokens {
                     if lower_path.contains(&token.to_lowercase()) {
                         final_score += 0.2; // Normalized bonus
+                        matched_query_tokens += 1;
                     }
                 }
 
                 // Multi-token match bonus (heuristic)
-                if query_token_count > 1 && final_score > 0.5 {
-                    final_score += 0.3;
+                if query_token_count > 1 && matched_query_tokens > 1 {
+                    let match_ratio = matched_query_tokens as f32 / query_token_count as f32;
+                    final_score += 1.0 * match_ratio;
                 }
 
                 final_results.push(SearchResult {
@@ -167,8 +175,8 @@ impl QueryExecutor {
         final_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
         final_results.truncate(MAX_RESULTS); 
 
-        // Step 4: Spotlight Fallback (if warming and results are few)
-        if (self.is_warming || final_results.len() < 5) && !query.tokens.is_empty() {
+        // Step 4: Spotlight Fallback while the local index is still warming up
+        if self.is_warming && final_results.len() < 5 && !query.tokens.is_empty() {
             let query_str = query.tokens.join(" ");
             let mut spotlight_results = self.spotlight_fallback.query(&query_str);
             
@@ -253,6 +261,7 @@ mod tests {
                 doc_id,
                 path: path.to_string(),
                 content_hash: 0,
+                ..Default::default()
             };
             delta_index.insert_document(doc, postings).unwrap();
             path_trie.insert(path, doc_id);
@@ -286,6 +295,38 @@ mod tests {
     }
 
     #[test]
+    fn test_bm25_stats_come_from_index() {
+        let mut executor = build_test_executor(&[
+            ("/test/a.txt", "alpha"),
+            ("/test/b.txt", "beta"),
+            ("/test/c.txt", "gamma"),
+        ]);
+        executor.refresh_stats();
+
+        // idf(doc_freq = total_docs) is ln(1 + 0.5 / (N + 0.5)); with N = 3 that is
+        // far from what a hardcoded N = 1000 would give.
+        let idf = executor.ranker.scorer.idf(3);
+        assert!((idf - (1.0f32 + 0.5 / 3.5).ln()).abs() < 1e-5, "idf = {idf}");
+    }
+
+    #[test]
+    fn test_prefix_cache_hits_are_ranked_not_flat() {
+        let mut executor = build_test_executor(&[
+            ("/test/quarterly_report.pdf", "data"),
+            ("/test/quiz.txt", "data"),
+            ("/quotes/other.txt", "data"),
+        ]);
+        executor.path_trie.rebuild_prefix_cache(10);
+        let results = executor.execute(Query::parse("qu").unwrap(), None).unwrap();
+
+        // Only files whose own name starts with the prefix are seeded by the cache;
+        // "/quotes/other.txt" merely lives under a matching directory.
+        assert!(results.iter().all(|r| !r.path.ends_with("other.txt") || r.score < 1.0));
+        assert!(results.iter().any(|r| r.path.ends_with("quiz.txt")));
+        assert!(results.windows(2).all(|w| w[0].score >= w[1].score));
+    }
+
+    #[test]
     fn test_executor_uses_prefix_cache() {
         let mut executor = build_test_executor(&[
             ("/test/quarterly_report.pdf", "data"),
@@ -297,6 +338,6 @@ mod tests {
         
         assert!(!results.is_empty());
         assert_eq!(results[0].path, "/test/quarterly_report.pdf");
-        assert_eq!(results[0].score, 1.0);
+        assert!(results[0].score >= 1.0);
     }
 }

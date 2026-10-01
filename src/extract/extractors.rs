@@ -5,7 +5,7 @@
 
 use std::path::Path;
 use std::fs::File;
-use std::io::{Read, BufReader};
+use std::io::Read;
 
 /// Extraction result
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -14,20 +14,58 @@ pub struct ExtractionResult {
     pub full_content: bool, // false if truncated to 64KB
 }
 
-const MAX_EXTRACT_SIZE: usize = 64 * 1024; // 64KB
+pub const MAX_EXTRACT_SIZE: usize = 64 * 1024; // 64KB
+
+/// PDFs larger than this are skipped rather than parsed
+const MAX_PDF_FILE_SIZE: u64 = 100 * 1024 * 1024;
+
+/// How a file's content is extracted, decided from its extension
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ContentKind {
+    /// Read directly as text
+    Text,
+    /// Parsed with PDFKit (in the extractor helper process when available)
+    Pdf,
+    /// Not content-indexed
+    Unsupported,
+}
+
+const TEXT_EXTENSIONS: &[&str] = &[
+    "txt", "md", "markdown", "rst", "org", "tex", "log", "csv", "tsv",
+    "json", "yaml", "yml", "toml", "xml", "html", "htm", "css", "scss", "ini", "cfg", "conf", "plist",
+    "rs", "py", "js", "jsx", "ts", "tsx", "swift", "go", "java", "kt", "c", "h", "cpp", "hpp", "cc", "m", "mm",
+    "rb", "php", "sh", "zsh", "bash", "sql", "lua", "r", "scala", "dart", "cs",
+];
+
+pub fn content_kind(path: &Path) -> ContentKind {
+    let extension = path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    if extension == "pdf" {
+        ContentKind::Pdf
+    } else if TEXT_EXTENSIONS.contains(&extension.as_str()) {
+        ContentKind::Text
+    } else {
+        ContentKind::Unsupported
+    }
+}
 
 /// Extract plaintext content (first 64KB)
 pub fn extract_plaintext(path: &Path) -> anyhow::Result<ExtractionResult> {
     let file = File::open(path)?;
-    let mut reader = BufReader::new(file);
-    let mut buffer = vec![0u8; MAX_EXTRACT_SIZE];
-    
-    let bytes_read = reader.read(&mut buffer)?;
-    buffer.truncate(bytes_read);
+    let mut buffer = Vec::with_capacity(MAX_EXTRACT_SIZE);
+    file.take(MAX_EXTRACT_SIZE as u64).read_to_end(&mut buffer)?;
+    let full_content = buffer.len() < MAX_EXTRACT_SIZE;
+
+    // A NUL byte means this is binary data wearing a text extension
+    if buffer.contains(&0) {
+        return Ok(ExtractionResult { text: String::new(), full_content: true });
+    }
     
     // Convert to UTF-8, replacing invalid sequences
     let text = String::from_utf8_lossy(&buffer).to_string();
-    let full_content = bytes_read < MAX_EXTRACT_SIZE;
     
     Ok(ExtractionResult {
         text,
@@ -35,41 +73,114 @@ pub fn extract_plaintext(path: &Path) -> anyhow::Result<ExtractionResult> {
     })
 }
 
-/// Extract content from any file (dispatcher)
+/// Extract the text layer of a PDF with PDFKit, page by page, up to 64KB.
+///
+/// Malformed files yield an empty result. PDFKit runs in whichever process
+/// calls this; `ExtractionClient` routes PDFs to the helper process so a
+/// PDFKit crash cannot take the app down.
+#[cfg(target_os = "macos")]
+pub fn extract_pdf(path: &Path) -> anyhow::Result<ExtractionResult> {
+    use objc2::msg_send;
+    use objc2::rc::autoreleasepool;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use std::ffi::{CStr, CString};
+    use std::os::raw::c_char;
+
+    #[link(name = "PDFKit", kind = "framework")]
+    extern "C" {}
+    #[link(name = "Foundation", kind = "framework")]
+    extern "C" {}
+
+    let empty = ExtractionResult { text: String::new(), full_content: true };
+
+    if std::fs::metadata(path)?.len() > MAX_PDF_FILE_SIZE {
+        return Ok(empty);
+    }
+    let (Some(ns_string), Some(ns_url), Some(pdf_document)) = (
+        AnyClass::get("NSString"),
+        AnyClass::get("NSURL"),
+        AnyClass::get("PDFDocument"),
+    ) else {
+        return Ok(empty);
+    };
+    let Ok(c_path) = CString::new(path.to_string_lossy().as_bytes()) else {
+        return Ok(empty);
+    };
+
+    let mut text = String::new();
+    let mut full_content = true;
+
+    autoreleasepool(|_| unsafe {
+        let ns_path: *mut AnyObject = msg_send![ns_string, stringWithUTF8String: c_path.as_ptr()];
+        if ns_path.is_null() {
+            return;
+        }
+        let url: *mut AnyObject = msg_send![ns_url, fileURLWithPath: ns_path];
+        let document: *mut AnyObject = msg_send![pdf_document, alloc];
+        let document: *mut AnyObject = msg_send![document, initWithURL: url];
+        if document.is_null() {
+            return;
+        }
+
+        let page_count: usize = msg_send![document, pageCount];
+        for index in 0..page_count {
+            if text.len() >= MAX_EXTRACT_SIZE {
+                full_content = false;
+                break;
+            }
+            // One pool per page keeps peak memory flat on long documents
+            autoreleasepool(|_| {
+                let page: *mut AnyObject = msg_send![document, pageAtIndex: index];
+                if page.is_null() {
+                    return;
+                }
+                let page_text: *mut AnyObject = msg_send![page, string];
+                if page_text.is_null() {
+                    return;
+                }
+                let utf8: *const c_char = msg_send![page_text, UTF8String];
+                if !utf8.is_null() {
+                    text.push_str(&CStr::from_ptr(utf8).to_string_lossy());
+                    text.push('\n');
+                }
+            });
+        }
+        let _: () = msg_send![document, release];
+    });
+
+    if text.len() > MAX_EXTRACT_SIZE {
+        let mut cut = MAX_EXTRACT_SIZE;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+        full_content = false;
+    }
+
+    Ok(ExtractionResult { text, full_content })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn extract_pdf(_path: &Path) -> anyhow::Result<ExtractionResult> {
+    Ok(ExtractionResult { text: String::new(), full_content: true })
+}
+
+/// Extract content from any file (dispatcher), in the calling process
 pub fn extract_content(path: &Path) -> anyhow::Result<ExtractionResult> {
-    // Get file extension
-    let extension = path.extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
-    
-    match extension.as_str() {
-        "txt" | "md" | "rs" | "py" | "js" | "ts" | "json" | "yaml" | "yml" | "toml" | "xml" | "html" | "css" | "sh" => {
-            // Plain text files
-            extract_plaintext(path)
-        }
-        "pdf" => {
-            // PDF extraction would go here (requires PDFKit FFI)
-            // For now, return empty result gracefully
-            Ok(ExtractionResult {
-                text: String::new(),
-                full_content: true,
-            })
-        }
-        _ => {
-            // Unknown file type - return empty
-            Ok(ExtractionResult {
-                text: String::new(),
-                full_content: true,
-            })
-        }
+    match content_kind(path) {
+        ContentKind::Text => extract_plaintext(path),
+        ContentKind::Pdf => extract_pdf(path),
+        ContentKind::Unsupported => Ok(ExtractionResult {
+            text: String::new(),
+            full_content: true,
+        }),
     }
 }
 
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     #[test]
@@ -102,5 +213,55 @@ mod tests {
         std::fs::write(&file, b"not a real pdf").unwrap();
         let result = extract_content(&file); // Should not panic
         assert!(result.is_ok()); // Graceful empty result
+        assert!(result.unwrap().text.is_empty());
+    }
+
+    #[test]
+    fn test_binary_with_text_extension_is_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("blob.txt");
+        std::fs::write(&file, [b'a', 0, b'b']).unwrap();
+        assert!(extract_content(&file).unwrap().text.is_empty());
+    }
+
+    /// A minimal one-page PDF whose text layer says "Hello Zebrafish"
+    pub(crate) fn sample_pdf() -> Vec<u8> {
+        let objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>".to_string(),
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_string(),
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R \
+             /Resources << /Font << /F1 5 0 R >> >> >>".to_string(),
+            {
+                let stream = "BT /F1 18 Tf 20 100 Td (Hello Zebrafish) Tj ET";
+                format!("<< /Length {} >>\nstream\n{}\nendstream", stream.len(), stream)
+            },
+            "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_string(),
+        ];
+        let mut pdf = b"%PDF-1.4\n".to_vec();
+        let mut offsets = Vec::new();
+        for (i, body) in objects.iter().enumerate() {
+            offsets.push(pdf.len());
+            pdf.extend_from_slice(format!("{} 0 obj\n{}\nendobj\n", i + 1, body).as_bytes());
+        }
+        let xref = pdf.len();
+        pdf.extend_from_slice(format!("xref\n0 {}\n0000000000 65535 f \n", objects.len() + 1).as_bytes());
+        for offset in offsets {
+            pdf.extend_from_slice(format!("{:010} 00000 n \n", offset).as_bytes());
+        }
+        pdf.extend_from_slice(
+            format!("trailer\n<< /Size {} /Root 1 0 R >>\nstartxref\n{}\n%%EOF\n", objects.len() + 1, xref).as_bytes(),
+        );
+        pdf
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_extract_pdf_text_layer() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("hello.pdf");
+        std::fs::write(&file, sample_pdf()).unwrap();
+
+        let result = extract_content(&file).unwrap();
+        assert!(result.text.contains("Hello Zebrafish"), "got {:?}", result.text);
     }
 }

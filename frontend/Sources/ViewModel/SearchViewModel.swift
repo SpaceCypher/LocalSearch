@@ -45,7 +45,9 @@ class SearchViewModel: ObservableObject {
         case .streaming:
             return "Streaming results…"
         case .complete:
-            if displayResults.isEmpty {
+            if backendUnavailableReason != nil {
+                return "Search engine not loaded"
+            } else if displayResults.isEmpty {
                 return "No results for \"\(queryText)\""
             } else {
                 let count = displayResults.count
@@ -104,6 +106,13 @@ class SearchViewModel: ObservableObject {
     
     // F14: Index progress
     @Published var indexProgress: IndexProgress? = nil
+    private var indexProgressTask: Task<Void, Never>?
+    
+    /// Set when the search engine could not be loaded; search cannot work.
+    @Published var backendUnavailableReason: String? = nil
+    
+    /// Asks the window to hide after a result has been opened.
+    var onDismissRequested: (() -> Void)?
     
     var showIndexProgress: Bool {
         indexProgress != nil
@@ -148,6 +157,63 @@ class SearchViewModel: ObservableObject {
     
     init(backend: SearchBackendProtocol) {
         self.backend = backend
+        self.backendUnavailableReason = backend.unavailableReason
+        observeIndexProgress()
+    }
+    
+    deinit {
+        indexProgressTask?.cancel()
+    }
+    
+    private func observeIndexProgress() {
+        let stream = backend.indexProgress()
+        indexProgressTask = Task { @MainActor [weak self] in
+            for await progress in stream {
+                guard let self else { return }
+                if self.indexProgress != progress {
+                    self.indexProgress = progress
+                }
+            }
+        }
+    }
+    
+    // MARK: - Opening results
+    
+    /// Open the result, tell the engine (opened files rank higher next time),
+    /// remember the query, and get out of the user's way.
+    func open(_ result: SearchResult) {
+        NSWorkspace.shared.open(URL(fileURLWithPath: result.path))
+        didUse(result)
+    }
+    
+    func revealInFinder(_ result: SearchResult) {
+        NSWorkspace.shared.selectFile(result.path, inFileViewerRootedAtPath: "")
+        didUse(result)
+    }
+    
+    private func didUse(_ result: SearchResult) {
+        backend.recordOpen(path: result.path)
+        if !queryText.isEmpty, queryHistory.first != queryText {
+            queryHistory.insert(queryText, at: 0)
+            queryHistory = Array(queryHistory.prefix(50))
+        }
+        onDismissRequested?()
+    }
+    
+    func toggleDetails() {
+        if expandedResult != nil {
+            expandedResult = nil
+        } else if let index = selectedIndex, index < filteredResults.count {
+            expandedResult = filteredResults[index]
+        }
+    }
+    
+    /// Drop inline filters (`kind:`, `in:`, …) from the query, keeping the words.
+    func clearFilters() {
+        isProgrammaticQueryChange = true
+        queryText = strippedQueryText.trimmingCharacters(in: .whitespaces)
+        isProgrammaticQueryChange = false
+        onQueryChange(queryText)
     }
     
     // MARK: - Query Lifecycle
@@ -314,26 +380,22 @@ class SearchViewModel: ObservableObject {
         }
         
         if modifiers.contains(.command) {
-            // Reveal in Finder
-            NSWorkspace.shared.selectFile(result.path, inFileViewerRootedAtPath: "")
+            revealInFinder(result)
         } else if modifiers.contains(.option) {
             // Copy path to clipboard
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.setString(result.path, forType: .string)
         } else {
-            // Open file
-            NSWorkspace.shared.open(URL(fileURLWithPath: result.path))
+            open(result)
         }
     }
     
     private func startSearch(query: String, generation: UInt64) async {
         queryState = .searching
 
-        // New query generation should start from a clean result set.
-        // This prevents stale rows from previous queries remaining visible.
-        displayResults = []
-        selectedIndex = nil
+        // The previous results stay on screen until the new ones arrive, so
+        // the list never blanks (and the window never collapses) between keystrokes.
         
         searchTask = Task { @MainActor in
             let stream = backend.search(
@@ -343,25 +405,24 @@ class SearchViewModel: ObservableObject {
                 cancellationToken: CancellationToken()
             )
             
+            var received = false
             for await batch in stream {
                 guard generation == queryGeneration else { break }
                 
-                // Track selected document ID
-                let selectedDocId = selectedIndex.flatMap { displayResults[safe: $0]?.id }
-                
+                received = true
                 displayResults = batch // Atomic assignment prevents UI thrashing
-                
-                // Restore selection
-                if let docId = selectedDocId,
-                   let newIndex = displayResults.firstIndex(where: { $0.id == docId }) {
-                    selectedIndex = newIndex
-                } else if !displayResults.isEmpty && selectedIndex == nil {
-                    selectedIndex = 0
-                }
+                // A new result set starts at the top hit
+                selectedIndex = batch.isEmpty ? nil : 0
                 syncExpandedResult()
             }
             
             guard generation == queryGeneration else { return }
+            if !received {
+                // The backend returned nothing at all
+                displayResults = []
+                selectedIndex = nil
+                syncExpandedResult()
+            }
             queryState = .complete
             showSpinner = false // Hide spinner when complete
             
@@ -434,6 +495,26 @@ protocol SearchBackendProtocol {
     func indexProgress() -> AsyncStream<IndexProgress?>
     func prefetchPrefix(_ prefix: String) async
     func spellingSuggestions(for query: String) async -> [String]
+    
+    /// Why search cannot work, if it cannot (shown to the user). Nil when healthy.
+    var unavailableReason: String? { get }
+    /// The user opened this result; feeds ranking.
+    func recordOpen(path: String)
+    /// Apply indexing settings (JSON, see `SettingsManager.indexingConfigJSON`).
+    func applyIndexingConfig(_ json: String)
+    /// One-line description of the index state for the settings window.
+    func indexSummary() -> String?
+    /// Save the index. Called once when the app quits.
+    func shutdown()
+}
+
+// Backends without an engine behind them need none of the engine hooks.
+extension SearchBackendProtocol {
+    var unavailableReason: String? { nil }
+    func recordOpen(path: String) {}
+    func applyIndexingConfig(_ json: String) {}
+    func indexSummary() -> String? { nil }
+    func shutdown() {}
 }
 
 // MARK: - Supporting Types
@@ -454,10 +535,24 @@ enum SystemState: Equatable {
     case fuzzyPaused
 }
 
-struct IndexProgress {
+struct IndexProgress: Equatable {
     let phase: String
+    /// 0...1. Meaningful only when `isDeterminate`.
     let percent: Double
-    let etaMinutes: Int
+    /// Nil while there is not enough history for an honest estimate.
+    let etaMinutes: Int?
+    
+    var isDeterminate: Bool { percent > 0 }
+    
+    var etaText: String? {
+        guard let minutes = etaMinutes else { return nil }
+        return minutes == 1 ? "About 1 min left" : "About \(minutes) min left"
+    }
+    
+    /// Compact form for the status bar, e.g. "Reading file contents 42%"
+    var statusText: String {
+        isDeterminate ? "\(phase) \(Int(percent * 100))%" : "\(phase)…"
+    }
 }
 
 // MARK: - Array Safe Subscript

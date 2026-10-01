@@ -18,6 +18,12 @@ impl BM25Scorer {
         }
     }
 
+    /// Update corpus statistics after the index changes
+    pub fn set_stats(&mut self, total_docs: u64, avg_doc_len: f32) {
+        self.total_docs = total_docs.max(1);
+        self.avg_doc_len = avg_doc_len.max(1.0);
+    }
+
     pub fn idf(&self, doc_freq: u64) -> f32 {
         let numerator = self.total_docs.saturating_sub(doc_freq) as f32 + 0.5;
         let denominator = doc_freq as f32 + 0.5;

@@ -8,6 +8,10 @@ use lz4_flex::decompress_size_prepended;
 #[cfg(unix)]
 use std::os::unix::fs::FileExt;
 use std::sync::atomic::{AtomicBool, Ordering};
+use xxhash_rust::xxh3::xxh3_64;
+
+/// File header identifying the segment format version
+const SEGMENT_MAGIC: &[u8] = b"LSSEG002";
 
 /// Immutable segment file
 pub struct Segment {
@@ -21,22 +25,55 @@ impl Segment {
     /// Open existing segment from disk (fully loads into RAM)
     pub fn open(path: impl AsRef<Path>) -> io::Result<Self> {
         let path = path.as_ref().to_path_buf();
-        let compressed = fs::read(&path)?;
+        let compressed = Self::read_verified(&path)?;
         
         // Decompress with LZ4
         let decompressed = decompress_size_prepended(&compressed)
             .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         
-        // Deserialize term dictionary
-        let term_dict: HashMap<String, Vec<Posting>> = bincode::deserialize(&decompressed)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+        // Deserialize term dictionary and document table
+        let (term_dict, documents): (HashMap<String, Vec<Posting>>, HashMap<DocId, Document>) =
+            bincode::deserialize(&decompressed)
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         
         Ok(Self {
             path,
             term_dict,
-            documents: HashMap::new(),
+            documents,
             is_cold: false,
         })
+    }
+
+    /// Read the segment body, checking the magic header and trailing xxh3 checksum
+    fn read_verified(path: &Path) -> io::Result<Vec<u8>> {
+        let mut bytes = fs::read(path)?;
+        let invalid = |msg: &str| io::Error::new(io::ErrorKind::InvalidData, msg.to_string());
+        if bytes.len() < SEGMENT_MAGIC.len() + 8 || !bytes.starts_with(SEGMENT_MAGIC) {
+            return Err(invalid("not a LocalSearch segment"));
+        }
+        let body_end = bytes.len() - 8;
+        let stored = u64::from_le_bytes(bytes[body_end..].try_into().unwrap());
+        if xxh3_64(&bytes[SEGMENT_MAGIC.len()..body_end]) != stored {
+            return Err(invalid("segment checksum mismatch"));
+        }
+        bytes.truncate(body_end);
+        bytes.drain(..SEGMENT_MAGIC.len());
+        Ok(bytes)
+    }
+
+    /// Verify a segment file's checksum without deserializing it
+    pub fn verify(path: impl AsRef<Path>) -> io::Result<()> {
+        Self::read_verified(path.as_ref()).map(|_| ())
+    }
+
+    /// Documents stored in this segment
+    pub fn documents(&self) -> &HashMap<DocId, Document> {
+        &self.documents
+    }
+
+    /// Consume the segment, returning its term dictionary and documents
+    pub fn into_parts(self) -> (HashMap<String, Vec<Posting>>, HashMap<DocId, Document>) {
+        (self.term_dict, self.documents)
     }
 
     /// Open segment without fully loading its dictionary (Cold Segment)
@@ -90,14 +127,23 @@ impl SegmentBuilder {
     pub fn from_delta(delta: &DeltaIndex) -> Self {
         let mut builder = Self::new();
         
-        // Copy term dictionary
+        // Copy term dictionary, dropping postings of tombstoned documents
         for (term, postings) in &delta.index {
-            builder.term_dict.insert(term.clone(), postings.clone());
+            let live: Vec<Posting> = postings
+                .iter()
+                .filter(|p| !delta.is_deleted(p.doc_id))
+                .cloned()
+                .collect();
+            if !live.is_empty() {
+                builder.term_dict.insert(term.clone(), live);
+            }
         }
         
-        // Copy documents
+        // Copy live documents
         for (doc_id, doc) in &delta.documents {
-            builder.documents.insert(*doc_id, doc.clone());
+            if !delta.is_deleted(*doc_id) {
+                builder.documents.insert(*doc_id, doc.clone());
+            }
         }
         
         builder
@@ -111,14 +157,16 @@ impl SegmentBuilder {
         let temp_path = final_path.with_extension("tmp");
         let mut file = fs::File::create(&temp_path)?;
         
-        // Serialize term dictionary
-        let serialized = bincode::serialize(&self.term_dict)
+        // Serialize term dictionary and document table
+        let serialized = bincode::serialize(&(&self.term_dict, &self.documents))
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         
         // Compress with LZ4
         let compressed = compress_prepend_size(&serialized);
         
+        file.write_all(SEGMENT_MAGIC)?;
         file.write_all(&compressed)?;
+        file.write_all(&xxh3_64(&compressed).to_le_bytes())?;
         file.sync_all()?;
         
         // Atomic rename

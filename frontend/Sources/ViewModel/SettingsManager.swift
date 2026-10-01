@@ -1,5 +1,6 @@
 import SwiftUI
 import Combine
+import ServiceManagement
 
 enum ResultDensity: String, CaseIterable, Identifiable, CustomStringConvertible {
     case comfortable = "Comfortable"
@@ -47,11 +48,131 @@ final class SettingsManager: ObservableObject {
     @AppStorage("showLabels") var showLabels: Bool = true
     @AppStorage("launchAtLogin") var launchAtLogin: Bool = false
     
-    private init() {}
+    private init() {
+        indexing = IndexingSettings.load(from: .standard) ?? IndexingSettings()
+    }
+    
+    // MARK: - Indexing
+    
+    private let defaults = UserDefaults.standard
+    
+    /// What the engine indexes. Every change is saved and sent to the engine,
+    /// which re-scans in the background.
+    @Published var indexing: IndexingSettings {
+        didSet {
+            guard indexing != oldValue else { return }
+            indexing.save(to: defaults)
+            Backend.shared.applyIndexingConfig(indexing.json)
+        }
+    }
+    
+    /// On launch, send the saved settings to the engine, but only if the user
+    /// has ever changed them: otherwise the engine's own defaults stand.
+    func pushIndexingConfigIfCustomised() {
+        if IndexingSettings.load(from: defaults) != nil {
+            Backend.shared.applyIndexingConfig(indexing.json)
+        }
+    }
+    
+    // MARK: - Launch at login
+    
+    /// Why the last attempt to change "Launch at login" failed, if it did
+    @Published var launchAtLoginError: String?
+    
+    /// Register or unregister the app as a login item. Reverts the stored
+    /// setting and explains if macOS refuses.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+            } else {
+                try SMAppService.mainApp.unregister()
+            }
+            launchAtLogin = enabled
+            launchAtLoginError = nil
+        } catch {
+            launchAtLogin = SMAppService.mainApp.status == .enabled
+            launchAtLoginError = "Couldn\u{2019}t change this. Move LocalSearch to the Applications folder and try again."
+        }
+        objectWillChange.send()
+    }
     
     var customColor: Color {
         get { Color(hex: customAccentHex) }
         set { customAccentHex = newValue.toHex() ?? "#007AFF" }
+    }
+}
+
+// MARK: - Indexing settings
+
+/// Mirrors `EngineConfig` in `src/engine.rs`
+struct IndexingSettings: Equatable, Codable {
+    var roots: [String] = IndexingSettings.defaultRoots
+    var excludes: [String] = IndexingSettings.defaultExcludes
+    var maxDepth: Int = 12
+    var indexHidden: Bool = false
+    var indexContent: Bool = true
+    
+    enum CodingKeys: String, CodingKey {
+        case roots, excludes
+        case maxDepth = "max_depth"
+        case indexHidden = "index_hidden"
+        case indexContent = "index_content"
+    }
+    
+    static let depthRange = 1...32
+    private static let storageKey = "indexingSettings"
+    
+    static var defaultRoots: [String] {
+        ["Downloads", "Documents", "Desktop"].map { "~/" + $0 }
+    }
+    
+    static let defaultExcludes = [
+        "node_modules", "target", "dist", "build", "tmp", "temp", "cache", "caches",
+        "deriveddata", "modulecache", "trash", "__pycache__", "venv", "site-packages", "pods",
+    ]
+    
+    /// The JSON the engine's `localsearch_configure` expects
+    var json: String {
+        let data = (try? JSONEncoder().encode(self)) ?? Data("{}".utf8)
+        return String(decoding: data, as: UTF8.self)
+    }
+    
+    static func load(from defaults: UserDefaults) -> IndexingSettings? {
+        guard let data = defaults.data(forKey: storageKey) else { return nil }
+        return try? JSONDecoder().decode(IndexingSettings.self, from: data)
+    }
+    
+    func save(to defaults: UserDefaults) {
+        defaults.set(try? JSONEncoder().encode(self), forKey: Self.storageKey)
+    }
+    
+    /// Add a folder, stored with `~` for the home directory. Returns false if
+    /// it is already covered by a folder in the list.
+    @discardableResult
+    mutating func addRoot(_ url: URL) -> Bool {
+        let path = Self.abbreviate(url.standardizedFileURL.path)
+        let covered = roots.contains { path == $0 || path.hasPrefix($0 + "/") }
+        guard !covered else { return false }
+        // A newly added parent replaces the children it contains
+        roots.removeAll { $0.hasPrefix(path + "/") }
+        roots.append(path)
+        return true
+    }
+    
+    /// Add a name to skip. Returns false for blanks, paths and duplicates.
+    @discardableResult
+    mutating func addExclude(_ name: String) -> Bool {
+        let cleaned = name.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !cleaned.isEmpty, !cleaned.contains("/"), !excludes.contains(cleaned) else { return false }
+        excludes.append(cleaned)
+        return true
+    }
+    
+    static func abbreviate(_ path: String) -> String {
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        if path == home { return "~" }
+        return path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
     }
 }
 

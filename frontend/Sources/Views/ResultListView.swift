@@ -13,11 +13,17 @@ struct ResultListView: View {
                             isSelected: viewModel.selectedIndex == index,
                             isTopHit: index == 0
                         )
-                        .padding(.horizontal, 12)
+                        .padding(.horizontal, DS.Space.s3)
+                        .contentShape(Rectangle())
+                        // Click selects, double-click opens (as in Finder)
+                        .onTapGesture(count: 2) {
+                            viewModel.open(result)
+                        }
                         .onTapGesture {
                             viewModel.selectedIndex = index
                             viewModel.syncExpandedResult()
                         }
+                        .accessibilityAddTraits(viewModel.selectedIndex == index ? [.isSelected] : [])
                     }
                 }
                 .onChange(of: viewModel.selectedIndex) { _, newIndex in
@@ -28,6 +34,7 @@ struct ResultListView: View {
                 }
             }
         }
-        .opacity(viewModel.queryState == .typing || viewModel.queryState == .searching ? 0.4 : 1.0)
+        // Results from the previous keystroke stay fully legible while the
+        // next search runs; the status bar shows that one is in flight.
     }
 }

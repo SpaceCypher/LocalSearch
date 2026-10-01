@@ -48,8 +48,7 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         }
         
         // Create SwiftUI content view
-        let backend = makeBackend()
-        let viewModel = SearchViewModel(backend: backend)
+        let viewModel = SearchViewModel(backend: Backend.shared)
         let contentView = SearchContentView(viewModel: viewModel)
 
         let visualEffectView = NSVisualEffectView(frame: panel.contentRect(forFrameRect: panel.frame))
@@ -77,32 +76,41 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         
         self.init(window: panel)
         
+        viewModel.onDismissRequested = { [weak self] in self?.hideWindow() }
         bindWindowSizing(panel: panel, viewModel: viewModel)
         setupEventMonitor(viewModel: viewModel)
     }
 
     private func setupEventMonitor(viewModel: SearchViewModel) {
-        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            // Arrow keys
+        localEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            // Only the search panel's keys; the settings window handles its own
+            guard let self, event.window === self.window else { return event }
+
+            // Left/Right are deliberately not intercepted: they move the caret
+            // in the query field.
             if event.keyCode == 125 { // Down
                 viewModel.handleArrowKey(.down)
                 return nil
             } else if event.keyCode == 126 { // Up
                 viewModel.handleArrowKey(.up)
                 return nil
-            } else if event.keyCode == 124 { // Right
-                viewModel.handleArrowKey(.right)
+            } else if event.keyCode == 48 { // Tab: show or hide details
+                viewModel.toggleDetails()
                 return nil
-            } else if event.keyCode == 123 { // Left
-                viewModel.handleArrowKey(.left)
-                return nil
-            } else if event.keyCode == 36 { // Return
+            } else if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
                 var modifiers = EventModifiers()
                 if event.modifierFlags.contains(.command) { modifiers.insert(.command) }
                 if event.modifierFlags.contains(.shift) { modifiers.insert(.shift) }
                 if event.modifierFlags.contains(.option) { modifiers.insert(.option) }
+                viewModel.handleReturnKey(modifiers: modifiers)
+                return nil
             } else if event.keyCode == 53 { // Escape
-                self.hideWindow()
+                // First Escape closes details, the next one hides the panel
+                if viewModel.expandedResult != nil {
+                    viewModel.expandedResult = nil
+                } else {
+                    self.hideWindow()
+                }
                 return nil
             } else if event.modifierFlags.contains(.command) {
                 if let chars = event.charactersIgnoringModifiers, ["1", "2", "3", "4"].contains(chars) {
@@ -189,7 +197,7 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         // To keep the left side pinned:
         // (Nothing needed, standard origin expands rightwards)
 
-        panel.setFrame(next, display: true, animate: true)
+        panel.setFrame(next, display: true, animate: !AnimationTokens.isReduceMotionEnabled)
     }
     
     func handleEscapeKey() {
@@ -265,20 +273,16 @@ struct SearchContentView: View {
                 .padding(.top, 20)
                 .padding(.bottom, viewModel.displayResults.isEmpty ? 20 : (settings.resultDensity == .comfortable ? 12 : 8))
                 
-                // Index progress (shown during first-launch bootstrap)
-                if viewModel.showIndexProgress, let progress = viewModel.indexProgress {
-                    IndexProgressView(progress: progress)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 8)
-                }
+                // Index progress lives in the status bar, so the layout does
+                // not shift when indexing starts or finishes.
                 
                 // Horizontal line separating search bar from results
                 if !viewModel.displayResults.isEmpty || viewModel.queryState == .searching {
                     Rectangle()
-                        .fill(settings.accentColor.color.opacity(0.15))
+                        .fill(DS.Palette.separator)
                         .frame(height: 0.5)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 4)
+                        .padding(.horizontal, DS.Space.s5)
+                        .padding(.bottom, DS.Space.s1)
                 }
                 
                 // Results or zero-results view
@@ -291,7 +295,10 @@ struct SearchContentView: View {
                         note: viewModel.zeroResultsNote,
                         onSelectSuggestion: { suggestion in
                             viewModel.selectSuggestion(suggestion)
-                        }
+                        },
+                        unavailableReason: viewModel.backendUnavailableReason,
+                        indexingStatus: viewModel.indexProgress?.statusText,
+                        onClearFilters: { viewModel.clearFilters() }
                     )
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
@@ -308,31 +315,23 @@ struct SearchContentView: View {
             .frame(width: 640)
             
             if let expanded = viewModel.expandedResult {
-                Divider()
-                    .background(settings.accentColor.color.opacity(0.3))
-                MetadataPanelView(result: expanded)
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                Rectangle()
+                    .fill(DS.Palette.border)
+                    .frame(width: 0.5)
+                MetadataPanelView(
+                    result: expanded,
+                    onOpen: { viewModel.open(expanded) },
+                    onReveal: { viewModel.revealInFinder(expanded) }
+                )
+                .transition(.opacity)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .background(
-            ZStack {
-                // Background opacity driven by Glass Intensity setting
-                Color.black.opacity(settings.glassIntensity * 0.8)
-                
-                // Base Gradient
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        settings.accentColor.color.opacity(0.1),
-                        Color.clear,
-                        Color.black.opacity(0.1)
-                    ]),
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            }
-        )
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: viewModel.expandedResult)
-        .animation(.easeInOut, value: settings.resultDensity)
+        // One flat scrim over the window material: its opacity is the
+        // "Background opacity" setting. No decorative gradients on a surface
+        // people read from.
+        .background(Color.black.opacity(0.25 + settings.glassIntensity * 0.6))
+        .animation(DS.Motion.ease(DS.Motion.base), value: viewModel.expandedResult)
+        .animation(DS.Motion.ease(), value: settings.resultDensity)
     }
 }

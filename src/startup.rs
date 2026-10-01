@@ -1,8 +1,7 @@
 use std::path::Path;
 use anyhow::Result;
 use crate::wal::reader::WalReader;
-use crate::index::signals::SignalDb;
-use std::path::PathBuf;
+use crate::index::segment::Segment;
 
 // ─── Startup Path Detection ───────────────────────────────────────────────────
 
@@ -32,131 +31,63 @@ pub fn detect_startup_path(data_dir: &Path) -> Result<StartupPath> {
 
 // ─── First Launch ─────────────────────────────────────────────────────────────
 
+/// Create the data directory and an empty WAL. Indexing itself is done by
+/// `Engine::reconcile`, which the engine runs right after this.
 pub fn first_launch(data_dir: &Path) -> Result<()> {
     std::fs::create_dir_all(data_dir)?;
-    
-    let wal_path = data_dir.join("wal.log");
-    std::fs::File::create(&wal_path)?;
-    
-    // Index hot paths synchronously (Desktop, Documents, Downloads)
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/Users/unknown".to_string());
-    let hot_paths = vec![
-        PathBuf::from(&home).join("Desktop"),
-        PathBuf::from(&home).join("Documents"),
-        PathBuf::from(&home).join("Downloads"),
-    ];
-    
-    for path in hot_paths {
-        if path.exists() {
-            index_directory_sync(&path)?;
-        }
-    }
-    
+    std::fs::File::create(data_dir.join("wal.log"))?;
     log::info!("First launch: initialized data directory at {:?}", data_dir);
-    Ok(())
-}
-
-/// Index a directory synchronously (for hot paths on first launch)
-fn index_directory_sync(path: &Path) -> Result<()> {
-    log::info!("Indexing hot path: {:?}", path);
-    
-    // Walk directory and count files (simplified implementation)
-    let mut file_count = 0;
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            if entry.path().is_file() {
-                file_count += 1;
-            }
-        }
-    }
-    
-    log::info!("Indexed {} files from {:?}", file_count, path);
     Ok(())
 }
 
 // ─── Warm Restart ─────────────────────────────────────────────────────────────
 
+/// The previous session shut down cleanly. Consume the marker so that a crash
+/// during this session is detected next time.
 pub fn warm_restart(data_dir: &Path) -> Result<()> {
-    let wal_path = data_dir.join("wal.log");
-    let mut reader = WalReader::new(&wal_path)?;
-    let entries = reader.replay_from(0)?;
-    
-    log::info!("Warm restart: replayed {} WAL entries", entries.len());
-    
-    // Prefault hot slab with madvise (macOS-specific)
-    {
-        let signal_db_path = data_dir.join("signals.json");
-        let signal_db = if signal_db_path.exists() {
-            let content = std::fs::read_to_string(&signal_db_path)?;
-            serde_json::from_str::<SignalDb>(&content).unwrap_or_default()
-        } else {
-            SignalDb::new()
-        };
-
-        let plan = build_warmup_plan(&signal_db);
-        log::info!("Warmup: pre-faulting {} hot terms and {} hot paths", 
-            plan.hot_terms.len(), plan.hot_paths.len());
-
-        for path in plan.hot_paths {
-            // Simulate madvise(MADV_WILLNEED)
-            log::debug!("Advise: MADV_WILLNEED on {}", path);
-        }
-    }
-    
-    // Remove clean shutdown marker (will be recreated on next clean shutdown)
     let marker = data_dir.join(".clean_shutdown");
     if marker.exists() {
         std::fs::remove_file(marker)?;
     }
-    
     Ok(())
-}
-
-pub struct WarmupPlan {
-    pub hot_terms: Vec<String>,
-    pub hot_paths: Vec<String>,
-}
-
-pub fn build_warmup_plan(signal_db: &SignalDb) -> WarmupPlan {
-    WarmupPlan {
-        hot_terms: signal_db.get_top_terms(500),
-        hot_paths: signal_db.get_top_paths(50),
-    }
 }
 
 // ─── Crash Recovery ───────────────────────────────────────────────────────────
 
+/// The previous session died. Discard half-written files and segments that
+/// fail their checksum, and cut a torn tail off the WAL. What remains is
+/// loaded and replayed by `Engine::load`.
 pub fn crash_recovery(data_dir: &Path) -> Result<()> {
-    // 1. Remove temp segments from incomplete compaction
     for entry in std::fs::read_dir(data_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("tmp") {
-            log::warn!("Removing incomplete segment: {:?}", path);
-            std::fs::remove_file(path)?;
-        }
-    }
-    
-    // 2. Verify segment checksums (simplified - just check file exists and is readable)
-    for entry in std::fs::read_dir(data_dir)? {
-        let entry = entry?;
-        let path = entry.path();
-        if path.extension().and_then(|s| s.to_str()) == Some("seg") {
-            // Verify segment is readable
-            if let Err(e) = std::fs::read(&path) {
-                log::error!("Corrupt segment: {:?}, error: {}", path, e);
+        let path = entry?.path();
+        match path.extension().and_then(|s| s.to_str()) {
+            // 1. Temp files from an incomplete snapshot
+            Some("tmp") => {
+                log::warn!("Removing incomplete file: {:?}", path);
                 std::fs::remove_file(path)?;
             }
+            // 2. Segments whose checksum does not verify
+            Some("seg") => {
+                if let Err(e) = Segment::verify(&path) {
+                    log::error!("Corrupt segment: {:?}, error: {}", path, e);
+                    std::fs::remove_file(path)?;
+                }
+            }
+            _ => {}
         }
     }
-    
-    // 3. Replay WAL
+
+    // 3. Truncate the WAL after its last intact entry
     let wal_path = data_dir.join("wal.log");
     let mut reader = WalReader::new(&wal_path)?;
     let entries = reader.replay_from(0)?;
-    
-    log::info!("Crash recovery: replayed {} WAL entries", entries.len());
-    
+    let valid_len: u64 = entries.iter().map(|entry| entry.serialized_len() as u64).sum();
+    if valid_len < std::fs::metadata(&wal_path)?.len() {
+        log::warn!("Truncating torn WAL tail at byte {}", valid_len);
+        std::fs::OpenOptions::new().write(true).open(&wal_path)?.set_len(valid_len)?;
+    }
+
+    log::info!("Crash recovery: {} intact WAL entries", entries.len());
     Ok(())
 }
 
@@ -233,8 +164,11 @@ mod tests {
         }
         std::fs::write(data_dir.join(".clean_shutdown"), b"").unwrap();
         
-        // Should not panic
         warm_restart(data_dir).unwrap();
+
+        // The marker is consumed so a crash in this session is detectable
+        assert!(!data_dir.join(".clean_shutdown").exists());
+        assert_eq!(detect_startup_path(data_dir).unwrap(), StartupPath::CrashRecovery);
     }
 
     #[test]
@@ -256,19 +190,6 @@ mod tests {
     }
 
     #[test]
-    fn test_first_launch_indexes_hot_paths() {
-        let dir = tempfile::tempdir().unwrap();
-        let data_dir = dir.path().join("data");
-        
-        // This test verifies first_launch doesn't panic when hot paths don't exist
-        // In production, it would index Desktop/Documents/Downloads
-        first_launch(&data_dir).unwrap();
-        
-        assert!(data_dir.exists());
-        assert!(data_dir.join("wal.log").exists());
-    }
-
-    #[test]
     fn test_crash_recovery_verifies_segment_checksums() {
         let dir = tempfile::tempdir().unwrap();
         let data_dir = dir.path();
@@ -276,13 +197,41 @@ mod tests {
         std::fs::create_dir_all(data_dir).unwrap();
         std::fs::write(data_dir.join("wal.log"), b"").unwrap();
         
-        // Create a valid segment file
-        let valid_segment = data_dir.join("segment_0001.seg");
-        std::fs::write(&valid_segment, b"valid data").unwrap();
-        
+        // One real segment, one file of garbage with a segment extension
+        use crate::index::delta::DeltaIndex;
+        use crate::index::segment::SegmentBuilder;
+        let valid_segment = data_dir.join("segment_000001.seg");
+        SegmentBuilder::from_delta(&DeltaIndex::new(1024)).finalize(&valid_segment).unwrap();
+        let corrupt_segment = data_dir.join("segment_000002.seg");
+        std::fs::write(&corrupt_segment, b"not a segment").unwrap();
+
         crash_recovery(data_dir).unwrap();
-        
-        // Valid segment should still exist
+
         assert!(valid_segment.exists());
+        assert!(!corrupt_segment.exists());
+    }
+
+    #[test]
+    fn test_crash_recovery_truncates_torn_wal_tail() {
+        use crate::wal::entry::WalEntry;
+        use crate::wal::writer::WalWriter;
+        use std::io::Write;
+
+        let dir = tempfile::tempdir().unwrap();
+        let wal_path = dir.path().join("wal.log");
+        {
+            let writer = WalWriter::new(&wal_path).unwrap();
+            for i in 1..=3u64 {
+                writer.append(WalEntry { seq: i, ..WalEntry::new_test() }).unwrap();
+            }
+            writer.flush().unwrap();
+        }
+        let intact_len = std::fs::metadata(&wal_path).unwrap().len();
+        std::fs::OpenOptions::new().append(true).open(&wal_path).unwrap()
+            .write_all(&[0xAB; 40]).unwrap();
+
+        crash_recovery(dir.path()).unwrap();
+
+        assert_eq!(std::fs::metadata(&wal_path).unwrap().len(), intact_len);
     }
 }

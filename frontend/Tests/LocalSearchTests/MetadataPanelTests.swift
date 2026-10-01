@@ -45,10 +45,31 @@ final class MetadataPanelTests: XCTestCase {
         // The actual crossfade happens in the UI layer
     }
     
-    func test_quickActionBar_showsAllActions() {
-        let panel = MetadataPanelView(result: .mock(rank: 1.0))
-        XCTAssertTrue(panel.quickActions.contains(.open))
-        XCTAssertTrue(panel.quickActions.contains(.revealInFinder))
-        XCTAssertTrue(panel.quickActions.contains(.copyPath))
+    func test_fileDetails_readFromDisk() throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".txt")
+        try Data(repeating: 65, count: 2048).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        
+        let details = FileDetails(path: url.path)
+        XCTAssertFalse(details.isMissing)
+        XCTAssertEqual(details.size, ByteCountFormatter.string(fromByteCount: 2048, countStyle: .file))
+        XCTAssertNotEqual(details.modified, "—")
+    }
+    
+    func test_fileDetails_missingFile_saysSo() {
+        let details = FileDetails(path: "/nonexistent/\(UUID().uuidString)")
+        XCTAssertTrue(details.isMissing)
+        XCTAssertEqual(details.size, "File no longer exists")
+    }
+    
+    func test_toggleDetails_expandsAndCollapsesSelection() {
+        let vm = SearchViewModel(backend: MockBackend())
+        vm.displayResults = [.mock(rank: 1.0, id: "A")]
+        vm.selectedIndex = 0
+        
+        vm.toggleDetails()
+        XCTAssertEqual(vm.expandedResult?.id, "A")
+        vm.toggleDetails()
+        XCTAssertNil(vm.expandedResult)
     }
 }

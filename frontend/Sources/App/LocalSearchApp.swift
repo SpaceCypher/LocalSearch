@@ -19,8 +19,13 @@ final class AppState: ObservableObject {
     let viewModel: SearchViewModel
 
     init() {
-        self.viewModel = SearchViewModel(backend: makeBackend())
+        self.viewModel = SearchViewModel(backend: Backend.shared)
     }
+}
+
+/// The one backend the whole app talks to (search panel and settings alike).
+enum Backend {
+    static let shared: SearchBackendProtocol = makeBackend()
 }
 
 func makeBackend() -> SearchBackendProtocol {
@@ -29,8 +34,12 @@ func makeBackend() -> SearchBackendProtocol {
         return ffi
     }
 
-    fputs("[LocalSearch] Using MockBackend fallback.\n", stderr)
-    return MockBackend()
+    // Without the engine nothing can be found. Say so in the UI instead of
+    // answering every query with "No results".
+    fputs("[LocalSearch] Search engine unavailable.\n", stderr)
+    return MockBackend(
+        unavailableReason: "The search engine library (liblocalsearch.dylib) could not be loaded. Reinstall LocalSearch, or in a development checkout run cargo build."
+    )
 }
 
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -55,6 +64,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         AppDelegate.shared = self
+        // Indexing settings the user has changed win over the engine's saved ones
+        SettingsManager.shared.pushIndexingConfigIfCustomised()
         setupMainMenu()
         updateDisplayMode()
         
@@ -89,6 +100,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         
         HotkeyManager.shared.register()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        // Snapshot the index so the next launch starts warm
+        Backend.shared.shutdown()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -184,25 +200,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func openSettings() {
-        print("AppDelegate: openSettings() triggered")
-        
-        // Ensure app is active
         NSApp.activate(ignoringOtherApps: true)
-        
-        // 1. Try standard SwiftUI settings trigger
-        let success = NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        
-        // 2. Fall-back to manual window if the standard one didn't show up
-        // We check success, but sendAction returns true if it FOUND the selector, 
-        // not necessarily if the window showed up. For safety, we can use our manual one.
-        if !success {
-            print("AppDelegate: showSettingsWindow selector failed, using manual fallback")
-            SettingsWindowController.shared.show()
-        } else {
-            // Even if success is true, sometimes it doesn't orderFront if the app was accessory.
-            // Our SettingsWindowController.shared.show() is safer for now.
-            SettingsWindowController.shared.show()
-        }
+        SettingsWindowController.shared.show()
     }
 }
 

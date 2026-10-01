@@ -24,7 +24,7 @@ fn bench_query_latency(c: &mut Criterion) {
 
     c.bench_with_input(BenchmarkId::new("query_latency", "warm"), &query, |b, q| {
         b.iter(|| {
-            let _ = executor.execute(q.clone());
+            let _ = executor.execute(q.clone(), None);
         })
     });
 }

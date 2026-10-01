@@ -12,11 +12,13 @@ struct QueryFieldView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 22, height: 22)
-                    .foregroundColor(settings.accentColor.color.opacity(0.8))
+                    .foregroundColor(DS.Palette.textMuted)
+                    .accessibilityHidden(true)
                 
                 TextField("Search", text: $viewModel.queryText)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 20, weight: .light))
+                    .font(.system(size: DS.TextSize.query, weight: .regular))
+                    .foregroundColor(DS.Palette.text)
                     .focused($isFocused)
                     .onChange(of: viewModel.queryText) { _, newValue in
                         viewModel.onQueryChange(newValue)
@@ -32,10 +34,12 @@ struct QueryFieldView: View {
                 } else if !viewModel.queryText.isEmpty {
                     Button(action: { viewModel.clearQuery() }) {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary.opacity(0.5))
+                            .foregroundColor(DS.Palette.textFaint)
                             .font(.system(size: 16))
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                    .help("Clear search")
                 }
             }
             .padding(.horizontal, 4)

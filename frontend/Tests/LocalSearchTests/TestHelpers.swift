@@ -25,11 +25,9 @@ class ImmediateBackend: SearchBackendProtocol {
         self.results = results
     }
     
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         AsyncStream { continuation in
-            for result in results {
-                continuation.yield(result)
-            }
+            continuation.yield(results)
             continuation.finish()
         }
     }
@@ -62,11 +60,11 @@ class SlowBackend: SearchBackendProtocol {
         self.delay = delay
     }
     
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         AsyncStream { continuation in
             Task {
                 try? await Task.sleep(for: delay)
-                continuation.yield(.mock(rank: 1.0))
+                continuation.yield([.mock(rank: 1.0)])
                 continuation.finish()
             }
         }
@@ -97,7 +95,7 @@ class TrackingBackend: SearchBackendProtocol {
     var searchCallCount = 0
     var lastQuery: String?
     
-    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<SearchResult> {
+    func search(query: String, filters: [QueryFilter], scope: SearchScope, cancellationToken: CancellationToken) -> AsyncStream<[SearchResult]> {
         searchCallCount += 1
         lastQuery = query
         

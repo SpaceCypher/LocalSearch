@@ -50,6 +50,7 @@ fn test_index_disk_parity_basic() {
             doc_id,
             path: path.to_string_lossy().to_string(),
             content_hash: 0,
+            ..Default::default()
         };
         
         // Insert into delta index

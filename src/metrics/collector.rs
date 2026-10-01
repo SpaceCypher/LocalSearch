@@ -28,8 +28,7 @@ impl IntegrityChecker {
         }
     }
 
-    /// Add document for testing
-    #[cfg(test)]
+    /// Add a document to the sample (mtime in seconds since the epoch)
     pub fn add_document(&mut self, doc_id: u64, path: String, mtime: u64) {
         self.documents.push((doc_id, path, mtime));
     }
@@ -189,6 +188,16 @@ impl MetricsCollector {
         }
         
         Ok(())
+    }
+
+    /// Fraction of recorded queries that returned nothing
+    pub fn zero_result_rate(&self) -> Result<f32> {
+        let (total, zero): (i64, i64) = self.db.query_row(
+            "SELECT COUNT(*), COALESCE(SUM(result_count = 0), 0) FROM query_metrics",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        Ok(if total == 0 { 0.0 } else { zero as f32 / total as f32 })
     }
 
     /// Get latency stats (P50, P99)

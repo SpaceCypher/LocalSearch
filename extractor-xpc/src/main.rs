@@ -1,12 +1,15 @@
-/// LocalSearch Content Extractor XPC Service
+/// LocalSearch content extractor helper process
 ///
-/// This process runs sandboxed (read-only file access, no network).
-/// It receives extraction jobs over stdin/XPC channel, extracts text,
-/// and returns results. Crashes here are contained — the main process
-/// detects them via the XPC connection interruption handler.
+/// Receives one file path per line on stdin, extracts its text, and writes
+/// the result to stdout (see `localsearch::extract::client` for the wire
+/// format). It exists so that parser crashes or hangs (PDFKit on malformed
+/// files) are contained: the main process sees the pipe close or time out,
+/// skips that file, and starts a fresh helper.
 fn main() {
     env_logger::init();
-    log::info!("localsearch-extractor XPC service starting...");
-    // XPC event loop will be wired in Task 25.
-    // Task 21 FFI entrypoints currently live in the main `localsearch` crate.
+    let stdin = std::io::stdin();
+    let stdout = std::io::stdout();
+    if let Err(e) = localsearch::extract::client::serve_helper(stdin.lock(), stdout.lock()) {
+        log::error!("extractor helper stopped: {e}");
+    }
 }

@@ -106,9 +106,9 @@ impl PathTrie {
 
             // Populate prefix cache for this component name
             // We only cache short prefixes to keep memory bounded
-            let max_prefix = name.len().min(4);
-            for i in 1..=max_prefix {
-                let prefix = name[..i].to_lowercase();
+            // Slice on character boundaries: names are not always ASCII
+            for end in name.char_indices().skip(1).map(|(i, _)| i).chain([name.len()]).take(4) {
+                let prefix = name[..end].to_lowercase();
                 let entry = prefix_cache.entry(prefix).or_insert_with(Vec::new);
                 
                 // Add top child docs to this prefix
@@ -198,6 +198,17 @@ mod tests {
         assert!(result.contains(2u32));
         assert!(result.contains(3u32));
         assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_prefix_cache_handles_non_ascii_names() {
+        let mut trie = PathTrie::new();
+        trie.insert("/docs/📘 Networks.txt", DocId(1));
+        trie.insert("/docs/é", DocId(2));
+        trie.rebuild_prefix_cache(10);
+
+        assert_eq!(trie.prefix_cache_lookup("📘 n"), Some(vec![DocId(1)]));
+        assert_eq!(trie.prefix_cache_lookup("é"), Some(vec![DocId(2)]));
     }
 
     #[test]

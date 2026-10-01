@@ -89,6 +89,23 @@ impl IdentityDb {
         Ok(IdentityDb { conn })
     }
     
+    /// Start a batch: allocations until `commit_batch` share one transaction,
+    /// which avoids an fsync per file during bulk indexing.
+    pub fn begin_batch(&mut self) -> Result<()> {
+        if self.conn.is_autocommit() {
+            self.conn.execute_batch("BEGIN")?;
+        }
+        Ok(())
+    }
+
+    /// Commit a batch started with `begin_batch`. No-op if none is open.
+    pub fn commit_batch(&mut self) -> Result<()> {
+        if !self.conn.is_autocommit() {
+            self.conn.execute_batch("COMMIT")?;
+        }
+        Ok(())
+    }
+
     /// Get or allocate a DocId for the given file identity.
     ///
     /// If the identity already exists in the database, returns the existing DocId.
@@ -142,22 +159,13 @@ impl IdentityDb {
     
     /// Allocate the next DocId from the counter.
     fn allocate_next_id(&mut self) -> Result<DocId> {
-        let tx = self.conn.transaction()?;
-        
-        // Read current counter
-        let next_id: i64 = tx.query_row(
-            "SELECT value FROM metadata WHERE key = 'next_doc_id'",
+        // A single statement keeps this atomic both in autocommit mode and
+        // inside a batch started with `begin_batch`.
+        let next_id: i64 = self.conn.query_row(
+            "UPDATE metadata SET value = value + 1 WHERE key = 'next_doc_id' RETURNING value - 1",
             [],
             |row| row.get(0)
         )?;
-        
-        // Increment counter
-        tx.execute(
-            "UPDATE metadata SET value = ?1 WHERE key = 'next_doc_id'",
-            params![next_id + 1]
-        )?;
-        
-        tx.commit()?;
         
         Ok(DocId(next_id as u64))
     }

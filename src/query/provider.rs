@@ -52,13 +52,16 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
     fn name(&self) -> &'static str { "keyword" }
 
     fn provide(&self, query: &Query) -> Vec<RawResult> {
-        let mut expanded_terms = Vec::new();
+        // (term, weight): exact terms count fully, fuzzy/phonetic expansions half
+        let mut expanded_terms: Vec<(String, f32)> = Vec::new();
         
         // Expansion logic (moved from executor.rs)
         for token_str in &query.tokens {
             let tokens = self.tokenizer.tokenize(token_str);
             for token in tokens {
-                let mut fuzzy_matches = self.bk_tree.search(&token.term, 1);
+                // Longer words tolerate two edits; short ones would match everything
+                let max_distance = if token.term.chars().count() >= 5 { 2 } else { 1 };
+                let mut fuzzy_matches = self.bk_tree.search(&token.term, max_distance);
                 
                 if fuzzy_matches.len() < 3 {
                     let phonetic_code = crate::query::phonetic::double_metaphone(&token.term);
@@ -71,29 +74,34 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
                     }
                 }
                 
-                if fuzzy_matches.is_empty() {
-                    expanded_terms.push(token.term.clone());
-                } else {
-                    expanded_terms.extend(fuzzy_matches);
+                // The exact term always participates: content-only terms are
+                // not in the BK-tree, so expansions alone would miss them.
+                expanded_terms.push((token.term.clone(), 1.0));
+                for term in fuzzy_matches {
+                    if term != token.term && !expanded_terms.iter().any(|(t, _)| t == &term) {
+                        expanded_terms.push((term, 0.5));
+                    }
                 }
             }
         }
 
         let mut doc_scores: HashMap<DocId, f32> = HashMap::new();
-        for term in expanded_terms {
-            if let Some(posting_list) = self.delta_index.lookup(&term) {
-                for posting in &posting_list.postings {
+        for (term, weight) in expanded_terms {
+            if let Some(postings) = self.delta_index.postings(&term) {
+                let doc_freq = postings.len() as u64;
+                for posting in postings {
                     if self.delta_index.is_deleted(posting.doc_id) {
                         continue;
                     }
+
+                    let doc_len = self.delta_index.documents
+                        .get(&posting.doc_id)
+                        .map_or(1, |doc| doc.doc_len.max(1) as u64);
                     
-                    let score = self.scorer.score(
-                        posting.term_freq as u64,
-                        100, // TODO: doc len
-                        posting_list.postings.len() as u64,
-                    );
+                    let score = self.scorer.score(posting.term_freq as u64, doc_len, doc_freq);
                     
-                    *doc_scores.entry(posting.doc_id).or_insert(0.0) += score;
+                    *doc_scores.entry(posting.doc_id).or_insert(0.0) +=
+                        score * weight * field_boost(posting.field_mask);
                 }
             }
         }
@@ -101,6 +109,18 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
         doc_scores.into_iter()
             .map(|(doc_id, score)| RawResult { doc_id, score })
             .collect()
+    }
+}
+
+/// A hit in the filename outweighs one in the directory path, which outweighs content.
+fn field_boost(field_mask: u8) -> f32 {
+    use crate::index::delta::{FIELD_FILENAME, FIELD_PATH};
+    if field_mask & FIELD_FILENAME != 0 {
+        3.0
+    } else if field_mask & FIELD_PATH != 0 {
+        1.5
+    } else {
+        1.0
     }
 }
 
@@ -145,28 +165,43 @@ impl<'a> ResultProvider for TrigramProvider<'a> {
 pub struct ScoreNormalizer;
 
 impl ScoreNormalizer {
-    /// Normalize scores to [0.0, 1.0] using min-max scaling.
+    /// Scale scores into (0.0, 1.0] relative to the best result.
+    ///
+    /// Dividing by the maximum (rather than min-max scaling) keeps near-equal
+    /// scores near-equal: min-max would stretch a negligible difference
+    /// between two results into the full 0..1 range.
     pub fn normalize(results: &mut [RawResult]) {
-        if results.is_empty() { return; }
-
-        let mut max_score = f32::MIN;
-        let mut min_score = f32::MAX;
-
-        for r in results.iter() {
-            if r.score > max_score { max_score = r.score; }
-            if r.score < min_score { min_score = r.score; }
-        }
-
-        let range = max_score - min_score;
-        if range > 0.0 {
+        let max_score = results.iter().map(|r| r.score).fold(0.0f32, f32::max);
+        if max_score > 0.0 {
             for r in results.iter_mut() {
-                r.score = (r.score - min_score) / range;
-            }
-        } else if max_score > 0.0 {
-            // All results have same positive score
-            for r in results.iter_mut() {
-                r.score = 1.0;
+                r.score /= max_score;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_normalize_preserves_ratios() {
+        let mut results = vec![
+            RawResult { doc_id: DocId(1), score: 4.0 },
+            RawResult { doc_id: DocId(2), score: 3.9 },
+            RawResult { doc_id: DocId(3), score: 1.0 },
+        ];
+        ScoreNormalizer::normalize(&mut results);
+        assert_eq!(results[0].score, 1.0);
+        assert!((results[1].score - 0.975).abs() < 1e-6);
+        assert_eq!(results[2].score, 0.25);
+    }
+
+    #[test]
+    fn test_normalize_handles_empty_and_zero() {
+        ScoreNormalizer::normalize(&mut []);
+        let mut results = vec![RawResult { doc_id: DocId(1), score: 0.0 }];
+        ScoreNormalizer::normalize(&mut results);
+        assert_eq!(results[0].score, 0.0);
     }
 }

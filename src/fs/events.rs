@@ -52,6 +52,10 @@ impl FsEventWatcher {
                     .as_micros() as u64;
                 
                 let mut dedup = dedup_clone.lock().unwrap();
+                // Keep the dedup table bounded on long-running sessions
+                if dedup.len() > 10_000 {
+                    dedup.retain(|_, ts| now.saturating_sub(*ts) < 100_000);
+                }
                 
                 for path in event.paths {
                     // Deduplication: skip if we've seen this path in the last 100ms
@@ -110,8 +114,9 @@ mod tests {
         std::fs::write(dir.path().join("test.txt"), "hello").unwrap();
         std::thread::sleep(Duration::from_millis(500));
 
-        let event = rx.try_recv().unwrap();
-        assert!(event.path.ends_with("test.txt"));
+        // FSEvents may report the watched directory itself first
+        let events: Vec<FsEvent> = rx.try_iter().collect();
+        assert!(events.iter().any(|event| event.path.ends_with("test.txt")), "{events:?}");
     }
 
     #[test]

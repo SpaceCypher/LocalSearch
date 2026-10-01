@@ -8,8 +8,11 @@ enum ThumbnailState: Equatable {
 
 struct MetadataPanelView: View {
     let result: SearchResult
+    var onOpen: (() -> Void)? = nil
+    var onReveal: (() -> Void)? = nil
     @State var thumbnailState: ThumbnailState = .loadingIcon
     @State private var thumbnailImage: NSImage?
+    @State private var details = FileDetails()
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -40,21 +43,27 @@ struct MetadataPanelView: View {
             // Header Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(result.filename)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: DS.TextSize.lg, weight: .semibold))
+                    .foregroundColor(DS.Palette.text)
                     .lineLimit(3)
+                    .textSelection(.enabled)
                 
                 Text(displayPath)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundColor(.secondary)
-                    .lineLimit(2)
+                    .font(.system(size: DS.TextSize.xs, design: .monospaced))
+                    .foregroundColor(DS.Palette.textMuted)
+                    .lineLimit(3)
+                    .truncationMode(.middle)
+                    .textSelection(.enabled)
             }
             
             // Metadata Grid
             VStack(alignment: .leading, spacing: 6) {
                 MetadataDetailRow(label: "Kind", value: kindString(for: result.fileKind))
-                MetadataDetailRow(label: "Size", value: "-- MB")
-                MetadataDetailRow(label: "Modified", value: "Recently")
-                MetadataDetailRow(label: "Created", value: "Recently")
+                if result.fileKind != .folder {
+                    MetadataDetailRow(label: "Size", value: details.size)
+                }
+                MetadataDetailRow(label: "Modified", value: details.modified)
+                MetadataDetailRow(label: "Created", value: details.created)
             }
             .padding(.vertical, 4)
             
@@ -64,23 +73,28 @@ struct MetadataPanelView: View {
             
             // Actions
             HStack(spacing: 8) {
+                // One primary action; revealing is the quieter secondary
                 Button(action: {
-                    NSWorkspace.shared.open(URL(fileURLWithPath: result.path))
+                    if let onOpen { onOpen() } else { NSWorkspace.shared.open(URL(fileURLWithPath: result.path)) }
                 }) {
                     Text("Open")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .disabled(details.isMissing)
                 
                 Button(action: {
-                    NSWorkspace.shared.selectFile(result.path, inFileViewerRootedAtPath: "")
+                    if let onReveal { onReveal() } else { NSWorkspace.shared.selectFile(result.path, inFileViewerRootedAtPath: "") }
                 }) {
                     Image(systemName: "folder")
                         .frame(width: 16)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.large)
+                .disabled(details.isMissing)
+                .help("Reveal in Finder (⌘↩)")
+                .accessibilityLabel("Reveal in Finder")
             }
             .padding(.bottom, 8)
         }
@@ -89,6 +103,7 @@ struct MetadataPanelView: View {
         .task(id: result.id) {
             thumbnailState = .loadingIcon
             thumbnailImage = nil
+            details = FileDetails(path: result.path)
             await loadThumbnail()
         }
     }
@@ -141,6 +156,38 @@ struct MetadataPanelView: View {
     }
 }
 
+/// Size and dates read from the filesystem when a result is expanded
+struct FileDetails: Equatable {
+    var size = "—"
+    var modified = "—"
+    var created = "—"
+    /// The file has gone since it was indexed
+    var isMissing = false
+    
+    init() {}
+    
+    init(path: String) {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: path) else {
+            size = "File no longer exists"
+            isMissing = true
+            return
+        }
+        if let bytes = attributes[.size] as? Int64 {
+            size = ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+        }
+        if let date = attributes[.modificationDate] as? Date {
+            modified = Self.format(date)
+        }
+        if let date = attributes[.creationDate] as? Date {
+            created = Self.format(date)
+        }
+    }
+    
+    private static func format(_ date: Date) -> String {
+        date.formatted(date: .abbreviated, time: .shortened)
+    }
+}
+
 private struct MetadataDetailRow: View {
     let label: String
     let value: String
@@ -148,14 +195,15 @@ private struct MetadataDetailRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Text(label)
-                .font(.system(size: 11))
-                .foregroundColor(.secondary)
+                .font(.system(size: DS.TextSize.xs))
+                .foregroundColor(DS.Palette.textMuted)
                 .frame(width: 60, alignment: .leading)
             
             Text(value)
-                .font(.system(size: 11))
-                .foregroundColor(.primary)
+                .font(.system(size: DS.TextSize.xs).monospacedDigit())
+                .foregroundColor(DS.Palette.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .accessibilityElement(children: .combine)
     }
 }

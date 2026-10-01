@@ -19,7 +19,7 @@ struct ResultRowView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(width: isTopHit ? (isCompact ? 28 : 36) : (isCompact ? 20 : 24), 
                            height: isTopHit ? (isCompact ? 28 : 36) : (isCompact ? 20 : 24))
-                    .foregroundColor(isSelected ? .primary : .secondary)
+                    .foregroundColor(isSelected ? DS.Palette.text : DS.Palette.textMuted)
                     .opacity(iconOpacity)
             }
             .frame(width: isTopHit ? (isCompact ? 36 : 48) : (isCompact ? 28 : 32),
@@ -30,37 +30,27 @@ struct ResultRowView: View {
                 Text(displayFilename)
                     .font(.system(size: isTopHit ? (isCompact ? 15 : 17) : (isCompact ? 13 : 14), 
                                 weight: isTopHit ? .medium : .regular))
-                    .foregroundColor(.primary)
+                    .foregroundColor(DS.Palette.text)
                     .lineLimit(1)
+                    .truncationMode(.middle)
                 
                 // Path
                 Text(pathRowText)
-                    .font(.system(size: isTopHit ? (isCompact ? 11 : 12) : (isCompact ? 10 : 11)))
-                    .foregroundColor(.secondary.opacity(0.8))
+                    .font(.system(size: isTopHit ? DS.TextSize.sm : DS.TextSize.xs))
+                    .foregroundColor(result.permissionState == .revoked ? DS.Palette.warning : DS.Palette.textMuted)
                     .lineLimit(1)
+                    .truncationMode(.head)
             }
             
             Spacer()
         }
         .padding(.horizontal, isCompact ? 12 : 16)
         .frame(minHeight: isTopHit ? (isCompact ? 56 : 72) : (isCompact ? 44 : 52))
-        .background(
-            ZStack {
-                if isSelected {
-                    accentColor.opacity(0.12)
-                    LinearGradient(
-                        colors: [accentColor.opacity(0.05), Color.clear],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                }
-            }
-        )
-        .cornerRadius(isTopHit ? 12 : 8)
-        .overlay(
-            RoundedRectangle(cornerRadius: isTopHit ? 12 : 8)
-                .stroke(isSelected ? accentColor.opacity(0.2) : Color.clear, lineWidth: 0.5)
-        )
+        // Selection is the one place the accent colour appears in the list
+        .background(isSelected ? accentColor.opacity(0.22) : Color.clear)
+        .cornerRadius(DS.Radius.row)
+        .help(result.path)
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
     }
     

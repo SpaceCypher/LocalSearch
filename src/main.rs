@@ -1,62 +1,75 @@
 use anyhow::Result;
-use std::path::PathBuf;
-use localsearch::startup;
+use localsearch::engine::{Engine, EngineConfig, Phase};
 use localsearch::metrics::dashboard::{HealthState, render_dashboard};
+use std::time::Duration;
+
+const USAGE: &str = "\
+Usage: localsearch <command>
+
+  index            Build or update the index, then exit
+  query <text>     Search the saved index
+  --debug-panel    Show index health for the data directory
+
+The data directory is $LOCALSEARCH_DATA_DIR or ~/.localsearch.
+Indexed folders come from its config.json, or $LOCALSEARCH_ROOT.";
 
 fn main() -> Result<()> {
     env_logger::init();
-    
-    let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|arg| arg == "--debug-panel") {
-        // Render a mockup state for now, in production this would pull from components
-        let state = HealthState {
-            memory_state: "Normal".to_string(),
-            segment_count: 3,
-            delta_size_bytes: 10 * 1024 * 1024,
-            wal_lag_events: 0,
-            doc_count: 500_000,
-            content_indexed_fraction: 0.98,
-            last_compaction_ago_secs: 120,
-            phantom_rate: 0.001,
-            stale_rate: 0.005,
-            query_p50_ms: 12.5,
-            query_p99_ms: 85.0,
-            zero_result_rate: 0.012,
-        };
-        println!("{}", render_dashboard(&state));
-        return Ok(());
-    }
 
-    log::info!("LocalSearch starting...");
-    
-    // Determine data directory
-    let data_dir = get_data_dir()?;
-    
-    // Detect startup path and execute appropriate handler
-    let startup_path = startup::detect_startup_path(&data_dir)?;
-    log::info!("Detected startup path: {:?}", startup_path);
-    
-    match startup_path {
-        startup::StartupPath::FirstLaunch => {
-            log::info!("First launch detected");
-            startup::first_launch(&data_dir)?;
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let data_dir = Engine::default_data_dir();
+    let engine = Engine::open(&data_dir, EngineConfig::load(&data_dir))?;
+
+    match args.first().map(String::as_str) {
+        Some("--debug-panel") => {
+            // Read-only: safe to run while the app has the same directory open
+            engine.load_snapshot()?;
+            let stats = engine.stats();
+            let state = HealthState {
+                memory_state: if stats.over_budget { "Over budget" } else { "Normal" }.to_string(),
+                segment_count: stats.segment_count,
+                delta_size_bytes: stats.index_bytes,
+                wal_lag_events: stats.wal_lag_events,
+                doc_count: stats.doc_count,
+                content_indexed_fraction: stats.content_indexed_fraction,
+                last_compaction_ago_secs: stats.last_snapshot_age_secs,
+                phantom_rate: stats.phantom_rate,
+                stale_rate: stats.stale_rate,
+                query_p50_ms: stats.query_p50_ms,
+                query_p99_ms: stats.query_p99_ms,
+                zero_result_rate: stats.zero_result_rate,
+            };
+            println!("{}", render_dashboard(&state));
         }
-        startup::StartupPath::WarmRestart => {
-            log::info!("Warm restart detected");
-            startup::warm_restart(&data_dir)?;
+        Some("index") => {
+            engine.start();
+            let mut last_phase = None;
+            loop {
+                let status = engine.status();
+                if last_phase != Some(status.phase) {
+                    eprintln!("{:?}: {} documents", status.phase, status.doc_count);
+                    last_phase = Some(status.phase);
+                }
+                if status.phase == Phase::Ready {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            engine.shutdown();
+            println!("Indexed {} documents into {}", engine.doc_count(), data_dir.display());
         }
-        startup::StartupPath::CrashRecovery => {
-            log::warn!("Crash recovery detected");
-            startup::crash_recovery(&data_dir)?;
+        Some("query") if args.len() > 1 => {
+            if engine.load_snapshot()? == 0 {
+                anyhow::bail!("no index in {}; run `localsearch index` first", data_dir.display());
+            }
+            for hit in engine.search(&args[1..].join(" ")) {
+                println!("{:8.1}  {}", hit.score, hit.path);
+            }
+        }
+        _ => {
+            eprintln!("{USAGE}");
+            std::process::exit(2);
         }
     }
-    
-    log::info!("Startup complete, ready to serve queries");
     Ok(())
-}
-
-fn get_data_dir() -> Result<PathBuf> {
-    let home = std::env::var("HOME")
-        .map_err(|_| anyhow::anyhow!("HOME environment variable not set"))?;
-    Ok(PathBuf::from(home).join(".localsearch"))
 }

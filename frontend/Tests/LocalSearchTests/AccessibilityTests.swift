@@ -18,7 +18,7 @@ final class AccessibilityTests: XCTestCase {
             id: "test",
             fileKind: .document
         )
-        let row = ResultRowView(result: result, isSelected: false)
+        let row = ResultRowView(result: result, isSelected: false, isTopHit: false)
         let label = row.accessibilityLabel
         XCTAssertTrue(label.contains("file_test.txt"))
         XCTAssertTrue(label.contains("document"))
