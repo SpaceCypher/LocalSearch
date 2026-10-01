@@ -14,6 +14,13 @@ struct MetadataPanelView: View {
     @State private var thumbnailImage: NSImage?
     @State private var details = FileDetails()
     
+    /// Total width of the panel including its padding. The window grows by
+    /// exactly this much (plus the divider) when details are shown.
+    static let width: CGFloat = 280
+    /// Height needed for preview, name, path, details and buttons without clipping
+    static let minHeight: CGFloat = 500
+    private static let previewHeight: CGFloat = 150
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             // QuickLook Thumbnail
@@ -28,7 +35,7 @@ struct MetadataPanelView: View {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 240, maxHeight: 180)
+                        .frame(maxWidth: MetadataPanelView.width - 2 * DS.Space.s4, maxHeight: MetadataPanelView.previewHeight)
                 } else {
                     Image(systemName: iconName(for: result.fileKind))
                         .resizable()
@@ -38,14 +45,15 @@ struct MetadataPanelView: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 180)
+            .frame(height: MetadataPanelView.previewHeight)
             
             // Header Info
             VStack(alignment: .leading, spacing: 4) {
                 Text(result.filename)
                     .font(.system(size: DS.TextSize.lg, weight: .semibold))
                     .foregroundColor(DS.Palette.text)
-                    .lineLimit(3)
+                    .lineLimit(2)
+                    .truncationMode(.middle)
                     .textSelection(.enabled)
                 
                 Text(displayPath)
@@ -98,8 +106,8 @@ struct MetadataPanelView: View {
             }
             .padding(.bottom, 8)
         }
-        .frame(width: 260)
-        .padding()
+        .padding(DS.Space.s4)
+        .frame(width: MetadataPanelView.width)
         .task(id: result.id) {
             thumbnailState = .loadingIcon
             thumbnailImage = nil
@@ -137,7 +145,7 @@ struct MetadataPanelView: View {
     
     private func loadThumbnail() async {
         let url = URL(fileURLWithPath: result.path)
-        let size = CGSize(width: 240, height: 180)
+        let size = CGSize(width: MetadataPanelView.width - 2 * DS.Space.s4, height: MetadataPanelView.previewHeight)
         
         do {
             let request = QLThumbnailGenerator.Request(fileAt: url, size: size, scale: NSScreen.main?.backingScaleFactor ?? 2.0, representationTypes: .thumbnail)

@@ -31,11 +31,14 @@ struct SettingsView: View {
                             activeTab = tab
                         } label: {
                             VStack(spacing: 0) {
+                                // Same weight in both states and never wrapped, so
+                                // selecting a tab cannot change the bar's layout
                                 Text(tab.rawValue)
-                                    .font(.system(size: DS.TextSize.base, weight: activeTab == tab ? .medium : .regular))
+                                    .font(.system(size: DS.TextSize.base))
+                                    .lineLimit(1)
+                                    .fixedSize()
                                     .foregroundColor(activeTab == tab ? MacOSDesign.textPrimary : MacOSDesign.textSecondary)
                                     .padding(.vertical, DS.Space.s2)
-                                    .padding(.horizontal, DS.Space.s3)
                                 
                                 // Active indicator line
                                 Rectangle()
@@ -158,7 +161,18 @@ struct SettingsView: View {
             MacOSSectionHeader(title: "App Presence")
             MacOSSection {
                 MacOSRow(label: "Show app in", hint: "Where the app icon appears") {
-                    MacOSSegmentedControl(selection: $settings.displayMode, options: AppDisplayMode.allCases)
+                    // Applied the moment it is chosen, not on the next redraw
+                    MacOSSegmentedControl(
+                        selection: Binding(
+                            get: { settings.displayMode },
+                            set: { mode in
+                                settings.objectWillChange.send()
+                                settings.displayMode = mode
+                                AppDelegate.shared.updateDisplayMode()
+                            }
+                        ),
+                        options: AppDisplayMode.allCases
+                    )
                 }
                 MacOSRow(
                     label: "Launch at login",

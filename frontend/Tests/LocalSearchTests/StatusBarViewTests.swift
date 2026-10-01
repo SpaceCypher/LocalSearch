@@ -29,4 +29,20 @@ final class StatusBarViewTests: XCTestCase {
         vm.displayResults = []
         XCTAssertEqual(vm.statusText, "No results for \"receit\"")
     }
+
+    func test_idlePanel_hidesStatusBar_unlessThereIsSomethingToReport() {
+        let vm = SearchViewModel(backend: MockBackend())
+        XCTAssertFalse(vm.showsStatusBar)
+        
+        vm.indexProgress = IndexProgress(phase: "Scanning folders", percent: 0, etaMinutes: nil)
+        XCTAssertTrue(vm.showsStatusBar)
+        vm.indexProgress = nil
+        
+        vm.queryText = "report"
+        XCTAssertTrue(vm.showsStatusBar)
+        
+        let broken = SearchViewModel(backend: MockBackend(unavailableReason: "engine missing"))
+        XCTAssertTrue(broken.showsStatusBar)
+        XCTAssertEqual(broken.statusText, "Search engine not loaded")
+    }
 }

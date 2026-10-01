@@ -35,6 +35,9 @@ class SearchViewModel: ObservableObject {
     var statusText: String {
         switch queryState {
         case .idle:
+            if backendUnavailableReason != nil {
+                return "Search engine not loaded"
+            }
             return "Start typing to search"
         case .typing:
             return "Typing…"
@@ -113,6 +116,12 @@ class SearchViewModel: ObservableObject {
     
     /// Asks the window to hide after a result has been opened.
     var onDismissRequested: (() -> Void)?
+    
+    /// With an empty query the panel is only the search field, unless indexing
+    /// is running or the engine failed to load, which the status bar reports.
+    var showsStatusBar: Bool {
+        !queryText.isEmpty || indexProgress != nil || backendUnavailableReason != nil
+    }
     
     var showIndexProgress: Bool {
         indexProgress != nil

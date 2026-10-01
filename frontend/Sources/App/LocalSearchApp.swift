@@ -152,21 +152,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func updateDisplayMode() {
         let mode = SettingsManager.shared.displayMode
         
-        let searchWindowIsVisible = windowController?.window?.isVisible ?? false
-        let policy: NSApplication.ActivationPolicy
-        
-        if searchWindowIsVisible {
-            policy = .regular
-        } else {
-            policy = (mode == .menuBar) ? .accessory : .regular
-        }
+        // The setting alone decides: "Menu Bar" means no Dock icon, even while
+        // a LocalSearch window is open.
+        let policy: NSApplication.ActivationPolicy = (mode == .menuBar) ? .accessory : .regular
         
         if NSApp.activationPolicy() != policy {
+            // Changing the policy deactivates the app, which would send the
+            // window the user is working in to the back. Bring it forward again.
+            let frontWindow = NSApp.keyWindow
             // Async dispatch to avoid UI deadlocks or focus loss during event handling
             DispatchQueue.main.async {
                 NSApp.setActivationPolicy(policy)
-                if searchWindowIsVisible {
+                if let frontWindow, frontWindow.isVisible {
                     NSApp.activate(ignoringOtherApps: true)
+                    frontWindow.makeKeyAndOrderFront(nil)
                 }
             }
         }
@@ -190,7 +189,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 menu.addItem(withTitle: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
                 statusItem?.menu = menu
             }
-        } else {
+        } else if let item = statusItem {
+            NSStatusBar.system.removeStatusItem(item)
             statusItem = nil
         }
     }

@@ -13,7 +13,8 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
 
     private let compactHeight: CGFloat = 92
     private let maxExpandedHeight: CGFloat = 564
-    private let zeroResultsHeight: CGFloat = 240
+    private let zeroResultsHeight: CGFloat = 290
+    private let statusBarHeight: CGFloat = 40
     private let baseExpandedHeight: CGFloat = 156
     private let perResultHeight: CGFloat = 56
     
@@ -63,6 +64,9 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.1).cgColor
 
         let hostingView = NSHostingView(rootView: contentView)
+        // The controller sizes the window (see resize); the SwiftUI content must
+        // not push its own size onto it, or the panel re-lays out around its centre.
+        hostingView.sizingOptions = []
         hostingView.translatesAutoresizingMaskIntoConstraints = false
         visualEffectView.addSubview(hostingView)
         NSLayoutConstraint.activate([
@@ -78,6 +82,7 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         
         viewModel.onDismissRequested = { [weak self] in self?.hideWindow() }
         bindWindowSizing(panel: panel, viewModel: viewModel)
+        bindDetailsWidth(panel: panel, viewModel: viewModel)
         setupEventMonitor(viewModel: viewModel)
     }
 
@@ -134,31 +139,71 @@ class SearchWindowController: NSWindowController, WindowControllerProtocol {
         )
         .debounce(for: 0.1, scheduler: RunLoop.main)
         .receive(on: RunLoop.main)
-        .sink { [weak self, weak panel] (query, results, state, expanded) in
-            guard let self, let panel else { return }
-            let targetHeight = self.targetHeight(
-                query: query,
-                resultCount: results.count,
-                state: state
-            )
-            let targetWidth: CGFloat = expanded != nil ? 900 : 640
-            self.resize(panel: panel, to: targetHeight, width: targetWidth)
+        .sink { [weak self, weak panel, weak viewModel] _ in
+            guard let self, let panel, let viewModel else { return }
+            self.updateSize(panel: panel, viewModel: viewModel)
         }
         .store(in: &cancellables)
+
+        // The idle panel grows a status line while there is index activity
+        // (or a problem) to report, and shrinks back when there is not.
+        viewModel.$indexProgress
+            .map { $0 != nil }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak panel, weak viewModel] _ in
+                guard let self, let panel, let viewModel else { return }
+                self.updateSize(panel: panel, viewModel: viewModel)
+            }
+            .store(in: &cancellables)
     }
 
-    private func targetHeight(query: String, resultCount: Int, state: QueryState) -> CGFloat {
+    /// The window is sized here and nowhere else, from the view-model's state.
+    private func updateSize(panel: NSPanel, viewModel: SearchViewModel) {
+        var height = targetHeight(
+            query: viewModel.queryText,
+            resultCount: viewModel.displayResults.count,
+            state: viewModel.queryState,
+            showsIdleStatus: viewModel.showsStatusBar
+        )
+        // The details column has its own height needs, however short the list is
+        if viewModel.expandedResult != nil {
+            height = max(height, MetadataPanelView.minHeight)
+        }
+        // Details open to the right: the search column keeps its place
+        let width = SearchContentView.mainWidth
+            + (viewModel.expandedResult != nil ? MetadataPanelView.width + SearchContentView.dividerWidth : 0)
+        resize(panel: panel, to: height, width: width)
+    }
+
+    /// Opening or closing details resizes at once (no debounce), so the panel
+    /// never draws the details column into a window that is still narrow.
+    private func bindDetailsWidth(panel: NSPanel, viewModel: SearchViewModel) {
+        viewModel.$expandedResult
+            .map { $0 != nil }
+            .removeDuplicates()
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self, weak panel, weak viewModel] _ in
+                guard let self, let panel, let viewModel else { return }
+                self.updateSize(panel: panel, viewModel: viewModel)
+            }
+            .store(in: &cancellables)
+    }
+
+    private func targetHeight(query: String, resultCount: Int, state: QueryState, showsIdleStatus: Bool) -> CGFloat {
         let settings = SettingsManager.shared
         let isComfortable = settings.resultDensity == .comfortable
         
         // Accurate measurements based on SwiftUI layouts
         let topSectionHeight: CGFloat = query.isEmpty ? 92 : (isComfortable ? 116 : 96)
-        let statusBarHeight: CGFloat = 40
         let topHitHeight: CGFloat = isComfortable ? 72 : 56
         let standardRowHeight: CGFloat = isComfortable ? 52 : 44
 
         if query.isEmpty {
-            return compactHeight
+            // Just the search field, unless there is something worth saying
+            return compactHeight + (showsIdleStatus ? statusBarHeight : 0)
         }
 
         if state == .complete && resultCount == 0 {
@@ -260,6 +305,9 @@ struct SearchContentView: View {
     @ObservedObject var viewModel: SearchViewModel
     @ObservedObject var settings = SettingsManager.shared
     
+    static let mainWidth: CGFloat = 640
+    static let dividerWidth: CGFloat = 0.5
+    
     var body: some View {
         HStack(spacing: 0) {
             VStack(spacing: 0) {
@@ -307,17 +355,19 @@ struct SearchContentView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 
-                // Status bar at bottom
-                StatusBarView(viewModel: viewModel)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                // Status bar at bottom. An idle, healthy panel is just the field.
+                if viewModel.showsStatusBar {
+                    StatusBarView(viewModel: viewModel)
+                        .padding(.horizontal, DS.Space.s4)
+                        .padding(.vertical, DS.Space.s2)
+                }
             }
-            .frame(width: 640)
+            .frame(width: SearchContentView.mainWidth)
             
             if let expanded = viewModel.expandedResult {
                 Rectangle()
                     .fill(DS.Palette.border)
-                    .frame(width: 0.5)
+                    .frame(width: SearchContentView.dividerWidth)
                 MetadataPanelView(
                     result: expanded,
                     onOpen: { viewModel.open(expanded) },
@@ -326,7 +376,10 @@ struct SearchContentView: View {
                 .transition(.opacity)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        // Pinned to the top-left and allowed to be smaller than its content: if
+        // the window is ever briefly too small (mid-resize), content is cut at
+        // the far edges rather than re-centred with the search field pushed off.
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
         // One flat scrim over the window material: its opacity is the
         // "Background opacity" setting. No decorative gradients on a surface
         // people read from.
