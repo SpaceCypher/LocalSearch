@@ -287,4 +287,20 @@ final class SearchViewModelTests: XCTestCase {
         XCTAssertFalse(settings.addExclude("a/b"))
         XCTAssertEqual(settings.excludes, ["build", "vendor"])
     }
+
+    func test_folderAccess_distinguishesMissingDeniedAndReadable() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let locked = base.appendingPathComponent("locked")
+        try FileManager.default.createDirectory(at: locked, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: locked.path)
+            try? FileManager.default.removeItem(at: base)
+        }
+        
+        XCTAssertEqual(FolderAccess.probe(base.path), .readable)
+        XCTAssertEqual(FolderAccess.probe(base.appendingPathComponent("nope").path), .missing)
+        
+        try FileManager.default.setAttributes([.posixPermissions: 0o000], ofItemAtPath: locked.path)
+        XCTAssertEqual(FolderAccess.probe(locked.path), .denied)
+    }
 }

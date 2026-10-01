@@ -122,7 +122,13 @@ struct SettingsView: View {
         }
         .frame(width: 480, height: 600)
         .preferredColorScheme(.dark)
-        .onAppear { indexStatus.start() }
+        .onAppear {
+            indexStatus.start()
+            indexStatus.checkAccess(to: settings.indexing.roots)
+        }
+        .onChange(of: settings.indexing.roots) { _, roots in
+            indexStatus.checkAccess(to: roots)
+        }
         .onDisappear { indexStatus.stop() }
         .onChange(of: settings.displayMode) { _, _ in
             AppDelegate.shared.updateDisplayMode()
@@ -408,12 +414,13 @@ struct SettingsView: View {
     }
     
     private func folderRow(_ root: String) -> some View {
-        let exists = FileManager.default.fileExists(atPath: (root as NSString).expandingTildeInPath)
+        let access = indexStatus.access[root] ?? .readable
+        let ok = access == .readable
         return VStack(spacing: 0) {
             HStack(spacing: DS.Space.s3) {
-                Image(systemName: exists ? "folder" : "exclamationmark.triangle")
+                Image(systemName: ok ? "folder" : "exclamationmark.triangle")
                     .font(.system(size: DS.TextSize.base))
-                    .foregroundColor(exists ? MacOSDesign.textSecondary : DS.Palette.warning)
+                    .foregroundColor(ok ? MacOSDesign.textSecondary : DS.Palette.warning)
                     .frame(width: 16)
                     .accessibilityHidden(true)
                 
@@ -424,10 +431,25 @@ struct SettingsView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(root)
-                    if !exists {
-                        Text("Folder not found. It is skipped until it reappears.")
+                    if access == .missing {
+                        Text("Folder not found. Its files stay searchable until it is back.")
                             .font(.system(size: DS.TextSize.xs))
                             .foregroundColor(DS.Palette.warning)
+                    } else if access == .denied {
+                        // Say what is wrong and give the one action that fixes it
+                        HStack(spacing: DS.Space.s2) {
+                            Text("macOS is not letting LocalSearch read this folder.")
+                                .font(.system(size: DS.TextSize.xs))
+                                .foregroundColor(DS.Palette.warning)
+                            Button("Open Privacy settings") {
+                                if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
+                                    NSWorkspace.shared.open(url)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .font(.system(size: DS.TextSize.xs, weight: .medium))
+                            .foregroundColor(settings.accentColor.color)
+                        }
                     }
                 }
                 
@@ -550,8 +572,23 @@ struct SettingsView: View {
 final class IndexStatusModel: ObservableObject {
     @Published var progress: IndexProgress?
     @Published var summary: String?
+    /// Whether each indexed folder can actually be read by this app
+    @Published var access: [String: FolderAccess] = [:]
     private var task: Task<Void, Never>?
     private let backend: SearchBackendProtocol
+    
+    /// Listing a folder is the only reliable test: macOS privacy denials do
+    /// not show up in file permissions. Done off the main thread because the
+    /// first attempt can wait on a system permission prompt.
+    func checkAccess(to roots: [String]) {
+        Task.detached(priority: .utility) { [weak self] in
+            var result: [String: FolderAccess] = [:]
+            for root in roots {
+                result[root] = FolderAccess.probe((root as NSString).expandingTildeInPath)
+            }
+            await MainActor.run { [weak self, result] in self?.access = result }
+        }
+    }
     
     init(backend: SearchBackendProtocol) {
         self.backend = backend
@@ -574,6 +611,21 @@ final class IndexStatusModel: ObservableObject {
     func stop() {
         task?.cancel()
         task = nil
+    }
+}
+
+enum FolderAccess: Equatable {
+    case readable
+    case missing
+    /// It exists but cannot be listed (macOS privacy setting or permissions)
+    case denied
+    
+    static func probe(_ path: String) -> FolderAccess {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            return .missing
+        }
+        return (try? FileManager.default.contentsOfDirectory(atPath: path)) != nil ? .readable : .denied
     }
 }
 

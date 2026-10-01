@@ -423,7 +423,7 @@ fn main() -> anyhow::Result<()> {
     println!("Spotlight's index is built and held by the system for every app, so there is no equivalent per-app figure to set beside these.\n");
     println!("- First index, names only: {:.1} s for {} items (search is usable from here)", names_secs, names_docs);
     println!("- First index, names and contents: {:.1} s in total", build_secs);
-    println!("- Share of text, code and PDF files whose contents were indexed: {:.0}%{}", stats.content_indexed_fraction * 100.0,
+    println!("- Share of text, code, PDF and Word/RTF files whose contents were indexed: {:.0}%{}", stats.content_indexed_fraction * 100.0,
         if status.budget_exhausted { " (stopped at the 256 MB in-memory index budget)" } else { "" });
     println!("- Process memory right after the first index: {:.0} MB", rss_after_build);
     println!("- Process memory after loading the saved index in a fresh process: {} MB", loaded_rss);
