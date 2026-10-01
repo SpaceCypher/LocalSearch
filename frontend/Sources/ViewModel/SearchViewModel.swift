@@ -111,6 +111,12 @@ class SearchViewModel: ObservableObject {
     @Published var indexProgress: IndexProgress? = nil
     private var indexProgressTask: Task<Void, Never>?
     
+    /// Why each result matched, by result id: the matching line of its content.
+    /// Filled in after the results appear, for the rows near the top.
+    @Published var snippets: [String: AttributedString] = [:]
+    private var snippetTask: Task<Void, Never>?
+    static let snippetLimit = 20
+    
     /// Set when the search engine could not be loaded; search cannot work.
     @Published var backendUnavailableReason: String? = nil
     
@@ -186,6 +192,27 @@ class SearchViewModel: ObservableObject {
         }
     }
     
+    // MARK: - Why a result matched
+    
+    /// Fetch matching lines for the top results, one at a time, off the main
+    /// actor. Abandoned as soon as the query moves on.
+    private func loadSnippets(for query: String, generation: UInt64) {
+        snippetTask?.cancel()
+        let results = Array(displayResults.prefix(Self.snippetLimit))
+        // Drop lines belonging to results that are no longer listed
+        let ids = Set(results.map(\.id))
+        snippets = snippets.filter { ids.contains($0.key) }
+        
+        let backend = self.backend
+        snippetTask = Task { @MainActor [weak self] in
+            for result in results where result.fileKind != .folder {
+                let raw = await backend.snippet(path: result.path, query: query)
+                guard let self, !Task.isCancelled, generation == self.queryGeneration else { return }
+                self.snippets[result.id] = raw.map(SnippetFormatter.attributed)
+            }
+        }
+    }
+    
     // MARK: - Opening results
     
     /// Open the result, tell the engine (opened files rank higher next time),
@@ -254,6 +281,8 @@ class SearchViewModel: ObservableObject {
         // 5. Handle empty query
         guard !newText.isEmpty else {
             queryState = .idle
+            snippetTask?.cancel()
+            snippets = [:]
             displayResults = []
             selectedIndex = nil
             expandedResult = nil
@@ -426,6 +455,7 @@ class SearchViewModel: ObservableObject {
             }
             
             guard generation == queryGeneration else { return }
+            loadSnippets(for: query, generation: generation)
             if !received {
                 // The backend returned nothing at all
                 displayResults = []
@@ -515,6 +545,9 @@ protocol SearchBackendProtocol {
     func indexSummary() -> String?
     /// Save the index. Called once when the app quits.
     func shutdown()
+    /// The line of the file's content that matches the query, with matches
+    /// wrapped in U+0001 … U+0002; nil when it matched on its name alone.
+    func snippet(path: String, query: String) async -> String?
 }
 
 // Backends without an engine behind them need none of the engine hooks.
@@ -524,6 +557,7 @@ extension SearchBackendProtocol {
     func applyIndexingConfig(_ json: String) {}
     func indexSummary() -> String? { nil }
     func shutdown() {}
+    func snippet(path: String, query: String) async -> String? { nil }
 }
 
 // MARK: - Supporting Types
@@ -561,6 +595,51 @@ struct IndexProgress: Equatable {
     /// Compact form for the status bar, e.g. "Reading file contents 42%"
     var statusText: String {
         isDeterminate ? "\(phase) \(Int(percent * 100))%" : "\(phase)…"
+    }
+}
+
+// MARK: - Snippets
+
+enum SnippetFormatter {
+    static let markStart: Character = "\u{1}"
+    static let markEnd: Character = "\u{2}"
+    
+    /// Turn the engine's marked-up line into text with the matches emphasised.
+    /// Emphasis is weight and brightness, so it does not depend on colour.
+    static func attributed(_ raw: String) -> AttributedString {
+        var result = AttributedString()
+        var buffer = ""
+        var inMatch = false
+        
+        func flush() {
+            guard !buffer.isEmpty else { return }
+            var piece = AttributedString(buffer)
+            if inMatch {
+                piece.font = .system(size: DS.TextSize.xs, weight: .semibold)
+                piece.foregroundColor = DS.Palette.text
+            }
+            result.append(piece)
+            buffer = ""
+        }
+        
+        for character in raw {
+            if character == markStart {
+                flush()
+                inMatch = true
+            } else if character == markEnd {
+                flush()
+                inMatch = false
+            } else {
+                buffer.append(character)
+            }
+        }
+        flush()
+        return result
+    }
+    
+    /// The line without markup, for accessibility labels
+    static func plain(_ snippet: AttributedString) -> String {
+        String(snippet.characters)
     }
 }
 

@@ -90,8 +90,8 @@ final class SearchViewModelTests: XCTestCase {
         // Before debounce: no search issued
         XCTAssertEqual(backend.searchCallCount, 0)
 
-        // After 90ms: search fires
-        try await Task.sleep(nanoseconds: 90_000_000)
+        // Comfortably past the 80ms debounce (a tight margin fails on a busy machine)
+        try await Task.sleep(nanoseconds: 250_000_000)
         XCTAssertEqual(backend.searchCallCount, 1)
     }
 
@@ -105,7 +105,7 @@ final class SearchViewModelTests: XCTestCase {
         vm.onQueryChange("hell")
         vm.onQueryChange("hello")
 
-        try await Task.sleep(nanoseconds: 90_000_000) // Wait past debounce
+        try await Task.sleep(nanoseconds: 250_000_000) // Wait past debounce
 
         // Only 1 search despite 5 keystrokes
         XCTAssertEqual(backend.searchCallCount, 1)

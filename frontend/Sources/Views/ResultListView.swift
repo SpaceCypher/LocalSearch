@@ -11,7 +11,8 @@ struct ResultListView: View {
                         ResultRowView(
                             result: result, 
                             isSelected: viewModel.selectedIndex == index,
-                            isTopHit: index == 0
+                            isTopHit: index == 0,
+                            snippet: viewModel.snippets[result.id]
                         )
                         .padding(.horizontal, DS.Space.s3)
                         .contentShape(Rectangle())

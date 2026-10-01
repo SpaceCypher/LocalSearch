@@ -391,3 +391,77 @@ fn test_config_normalization() {
     let partial: EngineConfig = serde_json::from_str(r#"{"max_depth": 4}"#).unwrap();
     assert!(partial.index_content && partial.max_depth == 4);
 }
+
+fn marked(snippet: &str) -> String {
+    snippet.replace(SNIPPET_MARK_START, "[").replace(SNIPPET_MARK_END, "]")
+}
+
+#[test]
+fn test_snippet_shows_the_matching_line() {
+    let fx = Fixture::new();
+    let notes = fx.write(
+        "notes.md",
+        "# Planning\n\nFirst item is unrelated.\nWe agreed the zebrafish tanks\tneed  cleaning weekly.\nLast line.\n",
+    );
+    let engine = fx.indexed_engine();
+
+    let snippet = engine.snippet(notes.to_str().unwrap(), "zebrafish").unwrap();
+    assert_eq!(marked(&snippet), "We agreed the [zebrafish] tanks need cleaning weekly.");
+}
+
+#[test]
+fn test_snippet_matches_stems_prefixes_and_every_query_word() {
+    let fx = Fixture::new();
+    let file = fx.write("a.txt", "The reports were cleaned up before the cleanup meeting.");
+    let engine = fx.indexed_engine();
+    let path = file.to_str().unwrap();
+
+    // "report" ~ "reports" (stem), "clean" ~ "cleaned" (stem) and "cleanup" (prefix)
+    let snippet = engine.snippet(path, "report clean kind:txt -draft").unwrap();
+    assert_eq!(marked(&snippet), "The [reports] were [cleaned] up before the [cleanup] meeting.");
+}
+
+#[test]
+fn test_snippet_trims_long_lines_around_the_match() {
+    let fx = Fixture::new();
+    let long_line = format!("{} needle {}", "lorem ipsum ".repeat(40), "dolor sit ".repeat(40));
+    let file = fx.write("long.txt", &long_line);
+    let engine = fx.indexed_engine();
+
+    let snippet = engine.snippet(file.to_str().unwrap(), "needle").unwrap();
+    let shown = marked(&snippet);
+    assert!(shown.starts_with('…') && shown.ends_with('…'), "{shown}");
+    assert!(shown.contains("[needle]"));
+    assert!(shown.chars().count() <= SNIPPET_CHARS + 4, "{} chars", shown.chars().count());
+    // Starts on a word boundary, not mid-word
+    assert!(shown.starts_with("…lorem") || shown.starts_with("…ipsum"), "{shown}");
+}
+
+#[test]
+fn test_snippet_is_none_without_a_content_match() {
+    let fx = Fixture::new();
+    let file = fx.write("zebrafish.md", "nothing relevant in here");
+    let image = fx.write("zebrafish.png", "zebrafish");
+    let engine = fx.indexed_engine();
+
+    // Matched on its name only
+    assert_eq!(engine.snippet(file.to_str().unwrap(), "zebrafish"), None);
+    // Not a content-indexed type
+    assert_eq!(engine.snippet(image.to_str().unwrap(), "zebrafish"), None);
+    // Not in the index at all: the engine does not read arbitrary files
+    let outside = fx.data_dir.join("outside.md");
+    fs::write(&outside, "zebrafish").unwrap();
+    assert_eq!(engine.snippet(outside.to_str().unwrap(), "zebrafish"), None);
+    // Nothing but filters in the query
+    assert_eq!(engine.snippet(file.to_str().unwrap(), "kind:md"), None);
+}
+
+#[test]
+fn test_snippet_handles_non_ascii_text() {
+    let fx = Fixture::new();
+    let file = fx.write("menu.txt", "Entrée du jour — crème brûlée 🍮 avec café");
+    let engine = fx.indexed_engine();
+
+    let snippet = engine.snippet(file.to_str().unwrap(), "café").unwrap();
+    assert_eq!(marked(&snippet), "Entrée du jour — crème brûlée 🍮 avec [café]");
+}

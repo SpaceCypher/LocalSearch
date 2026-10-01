@@ -1296,6 +1296,40 @@ impl Engine {
         hits
     }
 
+    /// The passage of `path`'s content that matches `query`, for showing under
+    /// a result: one line of about `SNIPPET_CHARS` characters with each match
+    /// wrapped in `SNIPPET_MARK_START` / `SNIPPET_MARK_END`.
+    ///
+    /// Returns None when the file is not in the index, has no extractable
+    /// content, or matched on its name alone. Reads the file, so call it off
+    /// the query path and only for results that are on screen.
+    pub fn snippet(&self, path: &str, query: &str) -> Option<String> {
+        if content_kind(Path::new(path)) == ContentKind::Unsupported {
+            return None;
+        }
+        // Only files the index knows about; this is not a general file reader
+        if !self.state.read().unwrap().path_ids.contains_key(path) {
+            return None;
+        }
+        let tokenizer = Tokenizer::new();
+        let words: Vec<String> = query
+            .split_whitespace()
+            .filter(|part| !part.contains(':') && !part.starts_with('-'))
+            .flat_map(tokenize_query)
+            .collect();
+        let stems: HashSet<String> = tokenizer
+            .tokenize(&words.join(" "))
+            .into_iter()
+            .map(|token| token.term)
+            .collect();
+        if words.is_empty() {
+            return None;
+        }
+
+        let text = self.extractor.lock().unwrap().extract(path).ok()?.text;
+        build_snippet(&text, &words, &stems, &tokenizer)
+    }
+
     /// The user opened `path` from the results of the most recent query.
     pub fn record_click(&self, path: &str) {
         let query = self.last_query.lock().unwrap().to_lowercase();
@@ -1395,6 +1429,107 @@ fn name_tokens(tokenizer: &Tokenizer, path: &Path, config: &EngineConfig) -> (Ve
         .unwrap_or_default();
 
     (filename_terms, dir_terms)
+}
+
+pub const SNIPPET_MARK_START: char = '\u{1}';
+pub const SNIPPET_MARK_END: char = '\u{2}';
+const SNIPPET_CHARS: usize = 140;
+/// Characters of context kept before the first match
+const SNIPPET_LEAD_CHARS: usize = 40;
+
+/// Alphanumeric runs of `text` with their byte ranges
+fn word_spans(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
+    let mut chars = text.char_indices().peekable();
+    std::iter::from_fn(move || {
+        while let Some(&(start, ch)) = chars.peek() {
+            if !ch.is_alphanumeric() {
+                chars.next();
+                continue;
+            }
+            let mut end = start;
+            while let Some(&(index, ch)) = chars.peek() {
+                if !ch.is_alphanumeric() {
+                    break;
+                }
+                end = index + ch.len_utf8();
+                chars.next();
+            }
+            return Some((start, end));
+        }
+        None
+    })
+}
+
+fn build_snippet(
+    text: &str,
+    words: &[String],
+    stems: &HashSet<String>,
+    tokenizer: &Tokenizer,
+) -> Option<String> {
+    // A word matches if it is a query word, starts with one, or shares its stem
+    let is_match = |word: &str| {
+        let lower = word.to_lowercase();
+        words.iter().any(|w| lower == *w || (w.chars().count() >= 3 && lower.starts_with(w.as_str())))
+            || tokenizer.tokenize(&lower).iter().any(|token| stems.contains(&token.term))
+    };
+
+    let (first_start, _) = word_spans(text).find(|&(start, end)| is_match(&text[start..end]))?;
+
+    // The window: the matching line, starting a little before the match
+    let line_start = text[..first_start].rfind('\n').map_or(0, |i| i + 1);
+    let line_end = text[first_start..].find('\n').map_or(text.len(), |i| first_start + i);
+    let mut window_start = text[line_start..first_start]
+        .char_indices()
+        .rev()
+        .nth(SNIPPET_LEAD_CHARS)
+        .map_or(line_start, |(i, _)| line_start + i);
+    // Don't begin mid-word
+    if window_start > line_start {
+        window_start = text[window_start..first_start]
+            .find(char::is_whitespace)
+            .map_or(window_start, |i| window_start + i + 1);
+    }
+    let window_end = text[window_start..line_end]
+        .char_indices()
+        .nth(SNIPPET_CHARS)
+        .map_or(line_end, |(i, _)| window_start + i);
+    let window = &text[window_start..window_end];
+
+    let mut snippet = String::with_capacity(window.len() + 16);
+    if window_start > line_start {
+        snippet.push('…');
+    }
+    let mut cursor = 0;
+    for (start, end) in word_spans(window) {
+        if is_match(&window[start..end]) {
+            snippet.push_str(&window[cursor..start]);
+            snippet.push(SNIPPET_MARK_START);
+            snippet.push_str(&window[start..end]);
+            snippet.push(SNIPPET_MARK_END);
+            cursor = end;
+        }
+    }
+    snippet.push_str(&window[cursor..]);
+    if window_end < line_end {
+        snippet.push('…');
+    }
+
+    // One tidy line: control characters and runs of whitespace become a space
+    let mut tidy = String::with_capacity(snippet.len());
+    let mut last_was_space = true;
+    for ch in snippet.chars() {
+        let is_mark = ch == SNIPPET_MARK_START || ch == SNIPPET_MARK_END;
+        if ch.is_whitespace() || (ch.is_control() && !is_mark) {
+            if !last_was_space {
+                tidy.push(' ');
+            }
+            last_was_space = true;
+        } else {
+            tidy.push(ch);
+            last_was_space = false;
+        }
+    }
+    Some(tidy.trim_end().to_string())
 }
 
 fn contains_ignore_ascii_case(haystack: &str, needle_lc: &str) -> bool {

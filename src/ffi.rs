@@ -149,6 +149,30 @@ pub extern "C" fn localsearch_record_click(path: *const c_char) -> i32 {
     0
 }
 
+/// The line of `path`'s content that matches `query`, or null if there is none
+/// (name-only match, unsupported type, file gone). Matches are wrapped in the
+/// control characters U+0001 … U+0002. Reads the file: call off the main thread.
+/// Release the result with `localsearch_free_string`.
+#[no_mangle]
+pub extern "C" fn localsearch_snippet(path: *const c_char, query: *const c_char) -> *mut c_char {
+    let (Ok(path), Ok(query)) = (unsafe { str_arg(path) }, unsafe { str_arg(query) }) else {
+        return std::ptr::null_mut();
+    };
+    engine()
+        .and_then(|engine| engine.snippet(path, query))
+        .and_then(|snippet| CString::new(snippet).ok())
+        .map_or(std::ptr::null_mut(), CString::into_raw)
+}
+
+#[no_mangle]
+pub extern "C" fn localsearch_free_string(string: *mut c_char) {
+    if !string.is_null() {
+        unsafe {
+            let _ = CString::from_raw(string);
+        }
+    }
+}
+
 /// Set what gets indexed. `config_json` is an `EngineConfig` object; omitted
 /// fields take their defaults, e.g.
 /// `{"roots": ["~/Documents"], "excludes": ["node_modules"], "max_depth": 12,
@@ -270,6 +294,14 @@ mod ffi_tests {
         localsearch_free_results(results, count);
 
         assert_eq!(localsearch_record_click(path.as_ptr()), 0);
+
+        let query = CString::new("hello").unwrap();
+        let snippet = localsearch_snippet(path.as_ptr(), query.as_ptr());
+        assert!(!snippet.is_null());
+        assert_eq!(unsafe { CStr::from_ptr(snippet) }.to_str().unwrap(), "\u{1}hello\u{2}");
+        localsearch_free_string(snippet);
+        assert!(localsearch_snippet(path.as_ptr(), std::ptr::null()).is_null());
+        localsearch_free_string(std::ptr::null_mut());
 
         localsearch_shutdown();
         assert!(data.path().join(".clean_shutdown").exists());

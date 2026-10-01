@@ -12,6 +12,8 @@ final class FFIBackend: SearchBackendProtocol {
     private typealias StringFn = @convention(c) (UnsafePointer<CChar>) -> Int32
     private typealias StatusFn = @convention(c) (UnsafeMutableRawPointer) -> Int32
     private typealias VoidFn = @convention(c) () -> Void
+    private typealias SnippetFn = @convention(c) (UnsafePointer<CChar>, UnsafePointer<CChar>) -> UnsafeMutablePointer<CChar>?
+    private typealias FreeStringFn = @convention(c) (UnsafeMutablePointer<CChar>?) -> Void
 
     private let handle: UnsafeMutableRawPointer
     private let queryFn: QueryFn
@@ -20,6 +22,8 @@ final class FFIBackend: SearchBackendProtocol {
     private let configureFn: StringFn
     private let indexStatusFn: StatusFn
     private let shutdownFn: VoidFn
+    private let snippetFn: SnippetFn
+    private let freeStringFn: FreeStringFn
 
     private init(
         handle: UnsafeMutableRawPointer,
@@ -28,7 +32,9 @@ final class FFIBackend: SearchBackendProtocol {
         recordClickFn: @escaping StringFn,
         configureFn: @escaping StringFn,
         indexStatusFn: @escaping StatusFn,
-        shutdownFn: @escaping VoidFn
+        shutdownFn: @escaping VoidFn,
+        snippetFn: @escaping SnippetFn,
+        freeStringFn: @escaping FreeStringFn
     ) {
         self.handle = handle
         self.queryFn = queryFn
@@ -37,6 +43,8 @@ final class FFIBackend: SearchBackendProtocol {
         self.configureFn = configureFn
         self.indexStatusFn = indexStatusFn
         self.shutdownFn = shutdownFn
+        self.snippetFn = snippetFn
+        self.freeStringFn = freeStringFn
     }
 
     deinit {
@@ -92,7 +100,9 @@ final class FFIBackend: SearchBackendProtocol {
                 let recordClick = dlsym(handle, "localsearch_record_click"),
                 let configure = dlsym(handle, "localsearch_configure"),
                 let indexStatus = dlsym(handle, "localsearch_index_status"),
-                let shutdown = dlsym(handle, "localsearch_shutdown")
+                let shutdown = dlsym(handle, "localsearch_shutdown"),
+                let snippet = dlsym(handle, "localsearch_snippet"),
+                let freeString = dlsym(handle, "localsearch_free_string")
             else {
                 loadErrors.append("\(path) is missing expected symbols (stale build?)")
                 dlclose(handle)
@@ -106,7 +116,9 @@ final class FFIBackend: SearchBackendProtocol {
                 recordClickFn: unsafeBitCast(recordClick, to: StringFn.self),
                 configureFn: unsafeBitCast(configure, to: StringFn.self),
                 indexStatusFn: unsafeBitCast(indexStatus, to: StatusFn.self),
-                shutdownFn: unsafeBitCast(shutdown, to: VoidFn.self)
+                shutdownFn: unsafeBitCast(shutdown, to: VoidFn.self),
+                snippetFn: unsafeBitCast(snippet, to: SnippetFn.self),
+                freeStringFn: unsafeBitCast(freeString, to: FreeStringFn.self)
             )
         }
 
@@ -239,6 +251,22 @@ final class FFIBackend: SearchBackendProtocol {
 
     func shutdown() {
         shutdownFn()
+    }
+
+    /// Reads the file, so it runs off the main actor.
+    func snippet(path: String, query: String) async -> String? {
+        let snippetFn = self.snippetFn
+        let freeStringFn = self.freeStringFn
+        let text = SearchRequest(query: query).text
+        guard !text.isEmpty else { return nil }
+        return await Task.detached(priority: .utility) {
+            let raw = path.withCString { pathPtr in
+                text.withCString { queryPtr in snippetFn(pathPtr, queryPtr) }
+            }
+            guard let raw else { return nil as String? }
+            defer { freeStringFn(raw) }
+            return String(cString: raw)
+        }.value
     }
 
     private static func readStatus(_ indexStatusFn: StatusFn) -> CIndexStatus? {

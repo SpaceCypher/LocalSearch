@@ -4,6 +4,8 @@ struct ResultRowView: View {
     let result: SearchResult
     let isSelected: Bool
     let isTopHit: Bool
+    /// The line of the file's content that matched, if it matched on content
+    var snippet: AttributedString? = nil
     
     @ObservedObject var settings = SettingsManager.shared
     
@@ -25,7 +27,7 @@ struct ResultRowView: View {
             .frame(width: isTopHit ? (isCompact ? 36 : 48) : (isCompact ? 28 : 32),
                    height: isTopHit ? (isCompact ? 36 : 48) : (isCompact ? 28 : 32))
             
-            VStack(alignment: .leading, spacing: isTopHit ? 4 : 2) {
+            VStack(alignment: .leading, spacing: isTopHit && snippet == nil ? 4 : 1) {
                 // Filename
                 Text(displayFilename)
                     .font(.system(size: isTopHit ? (isCompact ? 15 : 17) : (isCompact ? 13 : 14), 
@@ -34,12 +36,25 @@ struct ResultRowView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 
+                // Why it matched. Rows have a fixed height, so in compact
+                // density the matching line takes the place of the path
+                // (which stays available as the row's tooltip and in details).
+                if let snippet, result.permissionState == .granted {
+                    Text(snippet)
+                        .font(.system(size: DS.TextSize.xs))
+                        .foregroundColor(DS.Palette.textMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                
                 // Path
+                if snippet == nil || !isCompact || result.permissionState == .revoked {
                 Text(pathRowText)
                     .font(.system(size: isTopHit ? DS.TextSize.sm : DS.TextSize.xs))
                     .foregroundColor(result.permissionState == .revoked ? DS.Palette.warning : DS.Palette.textMuted)
                     .lineLimit(1)
                     .truncationMode(.head)
+                }
             }
             
             Spacer()
@@ -91,6 +106,9 @@ struct ResultRowView: View {
             return "\(result.filename), \(fileType), Permission denied"
         }
         
+        if let snippet {
+            return "\(result.filename), \(fileType), \(displayPath). Matches: \(SnippetFormatter.plain(snippet))"
+        }
         return "\(result.filename), \(fileType), \(displayPath)"
     }
     
