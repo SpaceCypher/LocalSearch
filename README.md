@@ -128,6 +128,16 @@ cargo run --release -- query budget     # search it
 cargo run --release -- --debug-panel    # index health, from the real index
 ```
 
+## Benchmarks
+
+`docs/benchmarks/spotlight.md` compares query latency, freshness and resource cost against Spotlight on one machine. Reproduce it with:
+
+```bash
+cargo run --release --example bench_vs_spotlight > docs/benchmarks/spotlight.md
+```
+
+It builds its own index in a temporary directory, takes several minutes, and reports timings and counts only (no file names).
+
 ## Troubleshooting
 
 ### The panel says "Search isn't available"
