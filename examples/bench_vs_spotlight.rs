@@ -319,7 +319,7 @@ fn main() -> anyhow::Result<()> {
     // ── Restart: save, reopen, load ──────────────────────────────────────────
     eprintln!("restart");
     engine.shutdown();
-    let segment_mb = dir_size_mb(&data_dir, "seg");
+    let segment_mb = ["terms", "post", "docs"].iter().map(|ext| dir_size_mb(&data_dir, ext)).sum::<f64>();
     drop(engine);
     let reopened = Engine::open(&data_dir, EngineConfig::default())?;
     let load_started = Instant::now();
@@ -404,7 +404,7 @@ fn main() -> anyhow::Result<()> {
     println!("- Spotlight: {}", median(&fresh_spot));
 
     println!("\n## Searching while the index is being saved\n");
-    println!("LocalSearch periodically writes its whole index to disk. One query (`report`) is repeated continuously on another thread before and during a save.\n");
+    println!("LocalSearch periodically merges recent changes into its on-disk index. One query (`report`) is repeated continuously on another thread before and during a merge.\n");
     let summarise = |values: &[f64]| -> String {
         if values.is_empty() {
             return "no queries completed".to_string();
@@ -423,9 +423,8 @@ fn main() -> anyhow::Result<()> {
     println!("Spotlight's index is built and held by the system for every app, so there is no equivalent per-app figure to set beside these.\n");
     println!("- First index, names only: {:.1} s for {} items (search is usable from here)", names_secs, names_docs);
     println!("- First index, names and contents: {:.1} s in total", build_secs);
-    println!("- Share of text, code, PDF and Word/RTF files whose contents were indexed: {:.0}%{}", stats.content_indexed_fraction * 100.0,
-        if status.budget_exhausted { " (stopped at the 256 MB in-memory index budget)" } else { "" });
-    println!("- Process memory right after the first index: {:.0} MB", rss_after_build);
+    println!("- Share of text, code, PDF and Word/RTF files whose contents were indexed: {:.0}%", stats.content_indexed_fraction * 100.0);
+    println!("- Process memory right after the first index: {:.0} MB (includes memory the allocator has not yet returned)", rss_after_build);
     println!("- Process memory after loading the saved index in a fresh process: {} MB", loaded_rss);
     println!("- Index on disk: {:.0} MB", segment_mb);
     println!("- Loading the saved index on a later launch: {:.2} s for {} items", load_secs, loaded);

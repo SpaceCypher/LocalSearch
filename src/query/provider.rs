@@ -1,3 +1,4 @@
+use crate::index::base::{BaseIndex, Bitset};
 use crate::index::delta::{DocId, DeltaIndex};
 use crate::query::parser::Query;
 use crate::query::ranker::BM25Scorer;
@@ -25,28 +26,30 @@ pub trait ResultProvider {
 
 // ─── KeywordProvider ──────────────────────────────────────────────────────────
 
-/// Provides results based on BM25 keyword matching in the DeltaIndex.
+/// Provides results based on BM25 keyword matching over the on-disk base
+/// (minus its dead documents) and the in-memory delta.
 pub struct KeywordProvider<'a> {
     delta_index: &'a DeltaIndex,
+    base: Option<(&'a BaseIndex, &'a Bitset)>,
     bk_tree: &'a crate::index::bktree::BkTree,
     phonetic_index: &'a HashMap<String, Vec<String>>,
     scorer: &'a BM25Scorer,
-    tokenizer: crate::query::parser::Tokenizer,
 }
 
 impl<'a> KeywordProvider<'a> {
     pub fn new(
         delta_index: &'a DeltaIndex,
+        base: Option<(&'a BaseIndex, &'a Bitset)>,
         bk_tree: &'a crate::index::bktree::BkTree,
         phonetic_index: &'a HashMap<String, Vec<String>>,
         scorer: &'a BM25Scorer,
     ) -> Self {
         Self {
             delta_index,
+            base,
             bk_tree,
             phonetic_index,
             scorer,
-            tokenizer: crate::query::parser::Tokenizer::new(),
         }
     }
 }
@@ -59,9 +62,13 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
         let mut expanded_terms: Vec<(String, f32)> = Vec::new();
         
         // Expansion logic (moved from executor.rs)
-        for token_str in &query.tokens {
-            let tokens = self.tokenizer.tokenize(token_str);
-            for token in tokens {
+        // Query tokens arrive already normalised and stemmed by `Query::parse`.
+        // They must not be stemmed again: stemming is not idempotent
+        // ("everywhere" -> "everywher" -> "everywh"), and the second pass
+        // produced a term that is not in the index.
+        for term in &query.tokens {
+            {
+                let token = crate::query::parser::Token { term: term.clone(), position: 0 };
                 // Longer words tolerate two edits; short ones would match everything
                 let max_distance = if token.term.chars().count() >= 5 { 2 } else { 1 };
                 let mut fuzzy_matches = self.bk_tree.search(&token.term, max_distance);
@@ -97,24 +104,35 @@ impl<'a> ResultProvider for KeywordProvider<'a> {
         }
 
         let mut doc_scores: HashMap<DocId, (f32, bool)> = HashMap::new();
+        // (document, term frequency, field mask) for one term, from both parts
+        let mut hits: Vec<(DocId, u32, u8)> = Vec::new();
+        let mut decoded = Vec::new();
         for (term, weight) in expanded_terms {
+            hits.clear();
+            if let Some((base, dead)) = self.base {
+                base.lookup(&term, &mut decoded);
+                hits.extend(decoded.iter().filter(|entry| !dead.get(entry.0)).filter_map(|&(ordinal, mask, tf)| {
+                    base.doc_id(ordinal).map(|doc_id| (doc_id, tf, mask))
+                }));
+            }
             if let Some(postings) = self.delta_index.postings(&term) {
-                let doc_freq = postings.len() as u64;
-                for posting in postings {
-                    if self.delta_index.is_deleted(posting.doc_id) {
-                        continue;
-                    }
+                hits.extend(
+                    postings
+                        .iter()
+                        .filter(|posting| !self.delta_index.is_deleted(posting.doc_id))
+                        .map(|posting| (posting.doc_id, posting.term_freq, posting.field_mask)),
+                );
+            }
 
-                    let doc_len = self.delta_index.documents
-                        .get(&posting.doc_id)
-                        .map_or(1, |doc| doc.doc_len.max(1) as u64);
-                    
-                    let score = self.scorer.score(posting.term_freq as u64, doc_len, doc_freq);
-                    
-                    let entry = doc_scores.entry(posting.doc_id).or_insert((0.0, false));
-                    entry.0 += score * weight * field_boost(posting.field_mask);
-                    entry.1 |= weight >= 1.0;
-                }
+            let doc_freq = hits.len() as u64;
+            for &(doc_id, term_freq, mask) in &hits {
+                // A document missing from the table was removed after the base was written
+                let Some(doc) = self.delta_index.documents.get(&doc_id) else { continue };
+                let score = self.scorer.score(term_freq as u64, doc.doc_len.max(1) as u64, doc_freq);
+
+                let entry = doc_scores.entry(doc_id).or_insert((0.0, false));
+                entry.0 += score * weight * field_boost(mask);
+                entry.1 |= weight >= 1.0;
             }
         }
 

@@ -1,4 +1,5 @@
 pub mod delta;
+pub mod base;
 pub mod segment;
 pub mod inverted;
 pub mod trie;

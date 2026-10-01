@@ -1,6 +1,8 @@
-// Delta Index — In-memory inverted index with tombstone deletes
-// Memory budget: 50MB
-// Supports: insert, delete (tombstone), lookup
+// Delta Index — the in-memory part of the index.
+//
+// Holds the document table for every live document, and the postings of
+// documents added or changed since the on-disk base (index/base.rs) was last
+// written. A merge folds those postings into the next base and empties them.
 
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
@@ -79,6 +81,8 @@ pub struct DeltaIndex {
     total_doc_len: u64,
     /// Approximate heap bytes held by postings and documents
     approx_bytes: usize,
+    /// The part of `approx_bytes` that is postings: what a merge frees
+    posting_bytes: usize,
 }
 
 /// Heap cost of one posting
@@ -95,6 +99,7 @@ impl DeltaIndex {
             tombstones: HashSet::new(),
             total_doc_len: 0,
             approx_bytes: 0,
+            posting_bytes: 0,
         }
     }
 
@@ -105,11 +110,11 @@ impl DeltaIndex {
         documents: HashMap<DocId, Document>,
     ) -> Self {
         let total_doc_len = documents.values().map(|d| d.doc_len as u64).sum();
-        let approx_bytes = index
+        let posting_bytes = index
             .iter()
             .map(|(term, postings)| term.len() + 48 + postings.iter().map(posting_bytes).sum::<usize>())
-            .sum::<usize>()
-            + documents.values().map(|d| d.path.len() + 96).sum::<usize>();
+            .sum::<usize>();
+        let approx_bytes = posting_bytes + documents.values().map(|d| d.path.len() + 96).sum::<usize>();
         Self {
             memory_budget,
             index,
@@ -117,6 +122,7 @@ impl DeltaIndex {
             tombstones: HashSet::new(),
             total_doc_len,
             approx_bytes,
+            posting_bytes,
         }
     }
 
@@ -130,6 +136,19 @@ impl DeltaIndex {
 
     pub fn approx_bytes(&self) -> usize {
         self.approx_bytes
+    }
+
+    /// Approximate heap bytes held by postings alone
+    pub fn posting_bytes(&self) -> usize {
+        self.posting_bytes
+    }
+
+    /// Drop every posting, keeping the document table. Called once the
+    /// postings have been written into the on-disk base.
+    pub fn clear_postings(&mut self) {
+        self.index = HashMap::new();
+        self.approx_bytes = self.approx_bytes.saturating_sub(self.posting_bytes);
+        self.posting_bytes = 0;
     }
 
     pub fn is_over_budget(&self) -> bool {
@@ -177,16 +196,19 @@ impl DeltaIndex {
     }
 
     fn push_postings(&mut self, postings: HashMap<String, Posting>) {
+        let mut added = 0usize;
         for (term, posting) in postings {
-            self.approx_bytes += posting_bytes(&posting);
+            added += posting_bytes(&posting);
             match self.index.get_mut(&term) {
                 Some(list) => list.push(posting),
                 None => {
-                    self.approx_bytes += term.len() + 48;
+                    added += term.len() + 48;
                     self.index.insert(term, vec![posting]);
                 }
             }
         }
+        self.approx_bytes += added;
+        self.posting_bytes += added;
     }
 
     /// Physically remove documents and all of their postings. One pass over the
@@ -196,6 +218,7 @@ impl DeltaIndex {
             return;
         }
         let mut freed = 0usize;
+        let mut freed_postings = 0usize;
         self.index.retain(|term, postings| {
             postings.retain(|p| {
                 let keep = !doc_ids.contains(&p.doc_id);
@@ -209,6 +232,7 @@ impl DeltaIndex {
             }
             !postings.is_empty()
         });
+        freed_postings += freed;
         for doc_id in doc_ids {
             if let Some(doc) = self.documents.remove(doc_id) {
                 freed += doc.path.len() + 96;
@@ -220,6 +244,7 @@ impl DeltaIndex {
             }
         }
         self.approx_bytes = self.approx_bytes.saturating_sub(freed);
+        self.posting_bytes = self.posting_bytes.saturating_sub(freed_postings);
     }
 
     /// Borrowing lookup (no clone of the posting list)

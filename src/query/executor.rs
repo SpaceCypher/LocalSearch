@@ -23,6 +23,10 @@ const MAX_RESULTS: usize = 100;
 
 pub struct QueryExecutor {
     pub(crate) delta_index: DeltaIndex,
+    /// The on-disk index, if one has been written, and which of its
+    /// documents have since been superseded or removed
+    pub(crate) base: Option<crate::index::base::BaseIndex>,
+    pub(crate) base_dead: crate::index::base::Bitset,
     pub(crate) bk_tree: BkTree,
     pub(crate) path_trie: PathTrie,
     pub(crate) trigram_index: TrigramIndex,
@@ -44,6 +48,8 @@ impl QueryExecutor {
         let avg_doc_len = delta_index.avg_doc_len();
         Self {
             delta_index,
+            base: None,
+            base_dead: crate::index::base::Bitset::default(),
             bk_tree,
             path_trie,
             trigram_index,
@@ -89,7 +95,13 @@ impl QueryExecutor {
         use crate::query::provider::{ResultProvider, KeywordProvider, TrigramProvider, ScoreNormalizer, RawResult};
         
         let providers: Vec<Box<dyn ResultProvider>> = vec![
-            Box::new(KeywordProvider::new(&self.delta_index, &self.bk_tree, &self.phonetic_index, &self.ranker.scorer)),
+            Box::new(KeywordProvider::new(
+                &self.delta_index,
+                self.base.as_ref().map(|base| (base, &self.base_dead)),
+                &self.bk_tree,
+                &self.phonetic_index,
+                &self.ranker.scorer,
+            )),
             Box::new(TrigramProvider::new(&self.trigram_index, 0.5)),
         ];
 

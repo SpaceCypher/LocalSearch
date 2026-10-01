@@ -179,29 +179,83 @@ fn test_wal_replays_changes_made_after_last_snapshot() {
     assert_eq!(paths(&engine.search("old")), ["old.txt"]);
 }
 
+/// Path of one file of the current on-disk base
+fn base_file(data_dir: &Path, extension: &str) -> PathBuf {
+    fs::read_dir(data_dir)
+        .unwrap()
+        .flatten()
+        .map(|entry| entry.path())
+        .find(|path| path.extension().is_some_and(|ext| ext == extension))
+        .unwrap_or_else(|| panic!("no .{extension} file in the data directory"))
+}
+
+fn flip_middle_byte(path: &Path) {
+    let mut bytes = fs::read(path).unwrap();
+    let middle = bytes.len() / 2;
+    bytes[middle] ^= 0xFF;
+    fs::write(path, bytes).unwrap();
+}
+
 #[test]
-fn test_corrupt_snapshot_falls_back_to_rescan() {
+fn test_damaged_document_table_falls_back_to_rescan() {
     let fx = Fixture::new();
     fx.write("survivor.txt", "");
     {
         let engine = fx.indexed_engine();
         engine.shutdown();
     }
-    let segment = fs::read_dir(&fx.data_dir)
-        .unwrap()
-        .flatten()
-        .map(|entry| entry.path())
-        .find(|path| path.extension().is_some_and(|ext| ext == "seg"))
-        .unwrap();
-    let mut bytes = fs::read(&segment).unwrap();
-    let middle = bytes.len() / 2;
-    bytes[middle] ^= 0xFF;
-    fs::write(&segment, bytes).unwrap();
+    flip_middle_byte(&base_file(&fx.data_dir, "docs"));
 
+    // Caught even after a clean shutdown: the table is always checked
     let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
     assert_eq!(engine.load().unwrap().0, 0);
     engine.reconcile();
     assert_eq!(paths(&engine.search("survivor")), ["survivor.txt"]);
+}
+
+#[test]
+fn test_damaged_postings_are_caught_after_a_crash() {
+    let fx = Fixture::new();
+    for i in 0..50 {
+        fx.write(&format!("note{i}.md"), "shared words about walruses and their tusks");
+    }
+    {
+        let engine = fx.indexed_engine();
+        engine.shutdown();
+    }
+    flip_middle_byte(&base_file(&fx.data_dir, "post"));
+    // No clean-shutdown marker: this launch follows a crash, so files are verified
+    fs::remove_file(fx.data_dir.join(".clean_shutdown")).unwrap();
+
+    let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    assert_eq!(engine.load().unwrap().0, 0, "a base that fails its checksum must not be used");
+    engine.reconcile();
+    engine.index_content(|| {});
+    assert_eq!(engine.search("walruses").len(), 50);
+}
+
+#[test]
+fn test_damaged_postings_never_panic_a_query() {
+    let fx = Fixture::new();
+    for i in 0..50 {
+        fx.write(&format!("note{i}.md"), "shared words about walruses and their tusks");
+    }
+    {
+        let engine = fx.indexed_engine();
+        engine.shutdown();
+    }
+    // Scribble over the whole postings file, and leave the clean-shutdown
+    // marker so the engine has no reason to verify it
+    let postings = base_file(&fx.data_dir, "post");
+    let len = fs::read(&postings).unwrap().len();
+    fs::write(&postings, vec![0xFFu8; len]).unwrap();
+
+    let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    engine.load().unwrap();
+    // Content matches are lost, but nothing crashes and names still work
+    let _ = engine.search("walruses");
+    let _ = engine.search("tusks shared words");
+    assert_eq!(paths(&engine.search("note7.md")), ["note7.md"]);
 }
 
 #[test]
@@ -312,30 +366,37 @@ fn test_clicks_raise_rank_and_persist() {
 }
 
 #[test]
-fn test_memory_budget_stops_content_indexing() {
+fn test_content_has_no_ceiling_and_the_delta_is_merged_as_it_fills() {
     let fx = Fixture::new();
-    for i in 0..40 {
-        let words: String = (0..400).map(|w| format!("word{i}x{w} ")).collect();
-        fx.write(&format!("doc{i}.txt"), &words);
+    for i in 0..200 {
+        let words: String = (0..300).map(|w| format!("word{i}x{w} ")).collect();
+        fx.write(&format!("doc{i}.txt"), &format!("{words} everywhere"));
     }
-    let engine = fx.indexed_engine();
-    assert!(!engine.status().budget_exhausted);
-
-    // Same corpus, but pretend the index is already at its ceiling
-    let fx2 = Fixture::new();
-    for i in 0..40 {
-        fx2.write(&format!("doc{i}.txt"), "some words here");
-    }
-    let engine = Engine::open(&fx2.data_dir, fx2.config()).unwrap();
+    // A one-byte allowance for the in-memory delta forces a merge every few files
+    let config = EngineConfig { memory_budget_mb: 0, ..fx.config() };
+    let engine = Engine::open(&fx.data_dir, config).unwrap();
     engine.load().unwrap();
-    engine.reconcile();
     engine.state.write().unwrap().executor.delta_index.set_memory_budget(1);
+    engine.reconcile();
     engine.index_content(|| {});
 
-    assert!(engine.status().budget_exhausted);
-    // Names are still searchable; content is not
-    assert_eq!(paths(&engine.search("doc7"))[0], "doc7.txt");
-    assert!(engine.search("words").is_empty());
+    // Every file's content is searchable, including the last ones indexed
+    assert!(!engine.status().budget_exhausted);
+    assert_eq!(engine.search("everywhere").len(), 100, "capped at the result limit, i.e. far more than a budget would have allowed");
+    for i in [0, 57, 123, 199] {
+        assert_eq!(paths(&engine.search(&format!("word{i}x299"))), [format!("doc{i}.txt")]);
+    }
+
+    // Many merges happened, the delta stayed small, and one generation is on disk
+    let stats = engine.stats();
+    assert!(engine.generation.load(Ordering::Relaxed) >= 10);
+    assert!(stats.delta_bytes < 200_000, "delta holds {} bytes", stats.delta_bytes);
+    assert_eq!(stats.segment_count, 1);
+    assert!(stats.index_bytes > 0);
+    // (These synthetic words are so regular that the dictionary compresses
+    // tens of thousands of them into a few hundred bytes; count terms instead.)
+    let on_disk_terms = engine.state.read().unwrap().executor.base.as_ref().unwrap().term_count();
+    assert!(on_disk_terms > 50_000, "{on_disk_terms} terms on disk");
 }
 
 #[test]
@@ -648,48 +709,187 @@ fn test_oversized_query_is_cut_not_crashed() {
 }
 
 #[test]
-fn test_old_format_snapshot_is_rebuilt_not_trusted() {
+fn test_index_from_an_older_format_is_rebuilt_not_trusted() {
     let fx = Fixture::new();
     fx.write("kept.txt", "");
     {
         let engine = fx.indexed_engine();
         engine.shutdown();
     }
-    // Rewrite the header as an older format version
-    let segment = fs::read_dir(&fx.data_dir)
-        .unwrap()
-        .flatten()
-        .map(|entry| entry.path())
-        .find(|path| path.extension().is_some_and(|ext| ext == "seg"))
-        .unwrap();
-    let mut bytes = fs::read(&segment).unwrap();
-    bytes[..8].copy_from_slice(b"LSSEG002");
-    fs::write(&segment, bytes).unwrap();
+    // What the previous format left behind: a manifest naming a segment file
+    // (and no base), plus the segment itself
+    fs::write(
+        fx.data_dir.join("manifest.json"),
+        r#"{"segment": "segment_000014.seg", "generation": 14, "snapshot_seq": 271, "doc_count": 1, "written_at_secs": 0}"#,
+    )
+    .unwrap();
+    fs::write(fx.data_dir.join("segment_000014.seg"), b"LSSEG003 old bytes").unwrap();
 
     let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
     assert_eq!(engine.load().unwrap().0, 0);
     engine.reconcile();
     assert_eq!(paths(&engine.search("kept")), ["kept.txt"]);
+
+    // The next save uses the new format, numbered after the old generation,
+    // and the leftovers are gone
+    engine.snapshot().unwrap();
+    assert!(fx.data_dir.join("base_000015.terms").exists());
+    assert!(!fx.data_dir.join("segment_000014.seg").exists());
+    let leftovers = fs::read_dir(&fx.data_dir).unwrap().flatten().filter(|e| e.file_name().to_string_lossy().starts_with("base_")).count();
+    assert_eq!(leftovers, 3, "exactly one generation's three files remain");
 }
 
-#[cfg(target_os = "macos")]
+// ─── On-disk base + in-memory delta ───────────────────────────────────────────
+
 #[test]
-fn test_finds_word_document_by_content() {
+fn test_after_a_merge_the_index_is_on_disk_not_in_memory() {
     let fx = Fixture::new();
-    // Make a real .docx with the system converter
-    let source = fx.data_dir.join("source.txt");
-    fs::write(&source, "Quarterly notes about the capybara enclosure.").unwrap();
-    let docx = fx.root.join("minutes.docx");
-    let converted = std::process::Command::new("/usr/bin/textutil")
-        .args(["-convert", "docx", "-output"])
-        .arg(&docx)
-        .arg(&source)
-        .status()
-        .expect("textutil runs");
-    assert!(converted.success() && docx.exists());
+    fx.write("a.md", "notes on the zebrafish genome");
+    fx.write("sub/b.md", "grocery list");
+    let engine = fx.indexed_engine();
+    assert!(engine.stats().delta_bytes > 0, "freshly indexed postings start in the delta");
+
+    engine.snapshot().unwrap();
+    let stats = engine.stats();
+    assert_eq!(stats.delta_bytes, 0);
+    assert!(stats.index_bytes > 0);
+    assert!(engine.state.read().unwrap().executor.delta_index.index.is_empty());
+
+    // Answers now come from the mapped files
+    assert_eq!(paths(&engine.search("zebrafish")), ["a.md"]);
+    assert_eq!(paths(&engine.search("grocery")), ["b.md"]);
+    assert_eq!(paths(&engine.search("b.md")), ["b.md"]);
+}
+
+#[test]
+fn test_edits_and_deletes_supersede_what_is_on_disk() {
+    let fx = Fixture::new();
+    let edited = fx.write("edited.md", "first draft about walruses");
+    let deleted = fx.write("deleted.md", "ephemeral thoughts about walruses");
+    fx.write("untouched.md", "steady notes about walruses");
+    let engine = fx.indexed_engine();
+    engine.snapshot().unwrap();
+    assert_eq!(engine.search("walruses").len(), 3);
+
+    fs::write(&edited, "second draft about narwhals, considerably longer").unwrap();
+    fs::remove_file(&deleted).unwrap();
+    engine.apply_changes(vec![edited.clone(), deleted.clone()]);
+
+    // The base still physically holds the old postings; they must not answer
+    assert_eq!(engine.stats().dead_in_base, 2);
+    assert_eq!(paths(&engine.search("walruses")), ["untouched.md"]);
+    assert_eq!(paths(&engine.search("narwhals")), ["edited.md"]);
+    assert!(engine.search("ephemeral").is_empty());
+    assert!(engine.search("deleted").is_empty());
+
+    // After the next merge the dead postings are gone for real, and nothing changes for the user
+    engine.snapshot().unwrap();
+    assert_eq!(engine.stats().dead_in_base, 0);
+    assert_eq!(paths(&engine.search("walruses")), ["untouched.md"]);
+    assert_eq!(paths(&engine.search("narwhals")), ["edited.md"]);
+    assert!(engine.search("ephemeral").is_empty());
+
+    // And it survives a restart
+    engine.shutdown();
+    let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    assert_eq!(engine.load().unwrap(), (2, 0));
+    assert_eq!(paths(&engine.search("narwhals")), ["edited.md"]);
+    assert_eq!(paths(&engine.search("walruses")), ["untouched.md"]);
+}
+
+#[test]
+fn test_names_on_disk_and_content_in_memory_answer_together() {
+    let fx = Fixture::new();
+    let file = fx.write("capybara_notes.md", "observations of the giant rodent");
+    let engine = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    engine.load().unwrap();
+    engine.reconcile();
+    // Names are merged to disk before any content is read, as on first launch
+    engine.snapshot().unwrap();
+    engine.index_content(|| {});
+
+    assert_eq!(paths(&engine.search("capybara")), ["capybara_notes.md"]);
+    assert_eq!(paths(&engine.search("rodent")), ["capybara_notes.md"]);
+
+    // Editing it replaces both halves
+    fs::write(&file, "now about tapirs and nothing else at all").unwrap();
+    engine.apply_changes(vec![file]);
+    assert!(engine.search("rodent").is_empty());
+    assert_eq!(paths(&engine.search("tapirs")), ["capybara_notes.md"]);
+    assert_eq!(paths(&engine.search("capybara")), ["capybara_notes.md"]);
+    assert_eq!(engine.doc_count(), 1);
+}
+
+#[test]
+fn test_rename_after_a_merge_moves_the_document() {
+    let fx = Fixture::new();
+    let old = fx.write("draft.md", "about otters");
+    let engine = fx.indexed_engine();
+    engine.snapshot().unwrap();
+
+    let new = fx.root.join("final.md");
+    fs::rename(&old, &new).unwrap();
+    engine.apply_changes(vec![old, new]);
+
+    assert!(engine.search("draft").is_empty());
+    assert_eq!(paths(&engine.search("final")), ["final.md"]);
+    assert_eq!(paths(&engine.search("otters")), ["final.md"]);
+    engine.snapshot().unwrap();
+    assert_eq!(paths(&engine.search("otters")), ["final.md"]);
+    assert_eq!(engine.doc_count(), 1);
+}
+
+#[test]
+fn test_merging_while_files_change_loses_nothing() {
+    let fx = Fixture::new();
+    for i in 0..30 {
+        fx.write(&format!("seed{i}.txt"), "original content");
+    }
     let engine = fx.indexed_engine();
 
-    assert_eq!(paths(&engine.search("capybara")), ["minutes.docx"]);
-    let snippet = engine.snippet(docx.to_str().unwrap(), "capybara").unwrap();
-    assert_eq!(marked(&snippet), "Quarterly notes about the [capybara] enclosure.");
+    // One thread keeps creating and editing files while this one merges repeatedly
+    let writer = {
+        let engine = Arc::clone(&engine);
+        let root = fx.root.clone();
+        std::thread::spawn(move || {
+            for i in 0..120 {
+                let path = root.join(format!("live{i}.txt"));
+                fs::write(&path, format!("fresh token{i} content")).unwrap();
+                let seed = root.join(format!("seed{}.txt", i % 30));
+                fs::write(&seed, format!("rewritten {i} times over, longer than before")).unwrap();
+                engine.apply_changes(vec![path, seed]);
+            }
+        })
+    };
+    while !writer.is_finished() {
+        engine.snapshot().unwrap();
+    }
+    writer.join().unwrap();
+    engine.snapshot().unwrap();
+
+    // Every file written is findable by name and by its last content
+    assert_eq!(engine.doc_count(), 150);
+    for i in [0, 59, 119] {
+        assert_eq!(paths(&engine.search(&format!("token{i}"))), [format!("live{i}.txt")], "token{i}");
+    }
+    assert!(engine.search("original").is_empty(), "every seed file was rewritten");
+    assert_eq!(engine.search("rewritten").len(), 30);
+
+    // The same holds from disk alone
+    engine.shutdown();
+    let reopened = Engine::open(&fx.data_dir, fx.config()).unwrap();
+    assert_eq!(reopened.load().unwrap(), (150, 0));
+    assert_eq!(reopened.search("rewritten").len(), 30);
+    assert_eq!(paths(&reopened.search("token119")), ["live119.txt"]);
+}
+
+#[test]
+fn test_words_whose_stem_changes_when_stemmed_twice_are_found() {
+    let fx = Fixture::new();
+    fx.write("a.txt", "it was everywhere");
+    fx.write("b.txt", "nothing to see");
+    let engine = fx.indexed_engine();
+
+    // "everywhere" stems to "everywher", which stems again to something else
+    assert_eq!(paths(&engine.search("everywhere")), ["a.txt"]);
 }

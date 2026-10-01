@@ -6,17 +6,25 @@
 //! ```text
 //! config.json        roots / exclusions / limits (written by `reconfigure`)
 //! identity.db        (device, inode, birthtime) → stable DocId
-//! segment_NNNNNN.seg full snapshot of the index (postings + documents)
-//! manifest.json      which segment is current and the WAL seq it covers
-//! wal.log            filesystem changes applied since that snapshot
+//! base_NNNNNN.terms  the on-disk index (see index/base.rs): term dictionary,
+//! base_NNNNNN.post   postings and document table. Memory-mapped, immutable.
+//! base_NNNNNN.docs
+//! manifest.json      which base is current, its checksums, the WAL seq it covers
+//! wal.log            filesystem changes applied since that base was written
 //! signals.json       click history used for ranking
 //! metrics.db         query latency ring buffer
 //! ```
 //!
-//! On start the snapshot is loaded, WAL entries newer than it are re-applied,
+//! The bulk of the index lives on disk and is paged in on demand. Memory
+//! holds the document table, the name-matching structures, and a small delta:
+//! the postings of files added or changed since the base was written. A
+//! changed file is marked dead in the base and re-indexed into the delta;
+//! a merge (`snapshot`) writes the next base from the two and empties the delta.
+//!
+//! On start the base is mapped, WAL entries newer than it are re-applied,
 //! and a reconcile walk picks up anything that changed while the app was not
 //! running. From then on FSEvents drive incremental updates, each logged to
-//! the WAL before it is applied, with periodic snapshots truncating the log.
+//! the WAL before it is applied, with periodic merges truncating the log.
 //!
 //! Failure policy: nothing here may take the host app down. Locks are taken
 //! poison-tolerantly, the worker restarts itself after a panic, and anything
@@ -46,7 +54,7 @@ use crate::index::bktree::BkTree;
 use crate::index::delta::{
     DeltaIndex, DocId, Document, Posting, FIELD_CONTENT, FIELD_FILENAME, FIELD_PATH,
 };
-use crate::index::segment::{Segment, SegmentBuilder};
+use crate::index::base::{self, BaseFiles, BaseIndex, Bitset};
 use crate::index::signals::SignalDb;
 use crate::index::trie::PathTrie;
 use crate::index::trigram::TrigramIndex;
@@ -62,6 +70,9 @@ use crate::wal::reader::WalReader;
 use crate::wal::writer::WalWriter;
 
 const MAX_RESULTS: usize = 100;
+/// The in-memory delta is merged into the on-disk base once its postings
+/// reach this size (or the configured memory budget, if that is smaller)
+const DELTA_MERGE_BYTES: usize = 16 * 1024 * 1024;
 const MAX_DOCS: usize = 2_000_000;
 /// Documents committed to the index per write-lock acquisition during scans
 const COMMIT_BATCH: usize = 512;
@@ -299,10 +310,13 @@ fn walk_root(root: &Path, config: &EngineConfig, mut visit: impl FnMut(&Path, &f
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 struct Manifest {
-    /// File name of the current segment inside the data directory
-    segment: Option<String>,
+    /// The current on-disk base: its generation and file checksums.
+    /// Absent before the first merge, and in manifests from older formats,
+    /// in which case the index is rebuilt from the filesystem.
+    #[serde(default)]
+    base: Option<BaseFiles>,
     generation: u64,
-    /// Every WAL entry with seq <= this is contained in the segment
+    /// Every WAL entry with seq <= this is contained in the base
     snapshot_seq: u64,
     doc_count: u64,
     written_at_secs: u64,
@@ -352,7 +366,8 @@ pub struct IndexStatus {
     pub work_done: u64,
     pub work_total: u64,
     pub elapsed_secs: u64,
-    /// Content extraction stopped because the memory budget was reached
+    /// Always false: the index is on disk and has no content ceiling. Kept
+    /// so the FFI status layout does not change.
     pub budget_exhausted: bool,
 }
 
@@ -371,7 +386,12 @@ pub struct EngineStats {
     /// Fraction of content-indexable files whose content has been processed
     pub content_indexed_fraction: f32,
     pub segment_count: usize,
+    /// Size of the on-disk index
     pub index_bytes: u64,
+    /// Postings held in memory, waiting for the next merge
+    pub delta_bytes: u64,
+    /// Documents in the on-disk index that have since changed or gone
+    pub dead_in_base: usize,
     pub over_budget: bool,
     /// WAL entries not yet covered by a snapshot
     pub wal_lag_events: usize,
@@ -458,6 +478,11 @@ pub struct Engine {
     generation: AtomicU64,
     /// Changes applied since the last snapshot
     dirty: AtomicU64,
+    /// Bumped on every index mutation, so a merge can tell whether the index
+    /// changed while it was writing
+    mutations: AtomicU64,
+    /// One merge at a time
+    merge_lock: Mutex<()>,
 
     phase: AtomicU8,
     work_done: AtomicU64,
@@ -520,6 +545,8 @@ impl Engine {
             last_seq: AtomicU64::new(0),
             generation: AtomicU64::new(0),
             dirty: AtomicU64::new(0),
+            mutations: AtomicU64::new(0),
+            merge_lock: Mutex::new(()),
             phase: AtomicU8::new(Phase::Loading as u8),
             work_done: AtomicU64::new(0),
             work_total: AtomicU64::new(0),
@@ -565,34 +592,40 @@ impl Engine {
 
     // ─── Loading ──────────────────────────────────────────────────────────────
 
-    /// Load the current snapshot, if any, into memory. Read-only on disk.
-    /// Returns the number of documents loaded.
+    /// Map the current on-disk base, if any, and load its document table.
+    /// Read-only on disk. Returns the number of documents loaded.
     pub fn load_snapshot(&self) -> Result<usize> {
+        self.load_base(false)
+    }
+
+    /// `verify` checks every index file against its checksum first, which
+    /// reads the whole index: done after an unclean shutdown.
+    fn load_base(&self, verify: bool) -> Result<usize> {
         let manifest = Manifest::load(&self.data_dir);
         self.generation.store(manifest.generation, Ordering::Relaxed);
         self.last_seq.store(manifest.snapshot_seq, Ordering::Relaxed);
 
-        let Some(name) = manifest.segment else {
+        let Some(files) = manifest.base else {
             return Ok(0);
         };
-        let segment = match Segment::open(self.data_dir.join(&name)) {
-            Ok(segment) => segment,
+        let (base, documents) = match BaseIndex::open(&self.data_dir, &files, verify) {
+            Ok(opened) => opened,
             Err(e) => {
-                // A missing or corrupt snapshot is not fatal: reconcile rebuilds
-                // the index from the filesystem.
-                log::error!("snapshot {name} unusable ({e}); rebuilding from disk");
+                // A missing or damaged index is not fatal: reconcile rebuilds
+                // it from the filesystem.
+                log::error!("index generation {} unusable ({e}); rebuilding from disk", files.generation);
+                self.last_seq.store(0, Ordering::Relaxed);
                 return Ok(0);
             }
         };
-        let (term_dict, documents) = segment.into_parts();
         let config = self.config();
         let tokenizer = Tokenizer::new();
 
-        let mut state = State::new(DeltaIndex::from_parts(
-            config.memory_budget_mb * 1024 * 1024,
-            term_dict,
-            documents,
-        ));
+        let loaded = documents.len();
+        let table: HashMap<DocId, Document> = documents.into_iter().map(|doc| (doc.doc_id, doc)).collect();
+        let mut state = State::new(DeltaIndex::from_parts(config.memory_budget_mb * 1024 * 1024, HashMap::new(), table));
+        state.executor.base_dead = Bitset::new(base.doc_count());
+        state.executor.base = Some(base);
         state.executor.spotlight_fallback.set_enabled(true);
         state.executor.spotlight_fallback.set_roots(config.roots.clone());
 
@@ -612,7 +645,6 @@ impl Engine {
             .and_then(|text| serde_json::from_str(&text).ok())
             .unwrap_or_default();
 
-        let loaded = paths.len();
         *self.state.write().unwrap_or_else(PoisonError::into_inner) = state;
         if loaded > 0 {
             self.warming.store(false, Ordering::Relaxed);
@@ -626,16 +658,25 @@ impl Engine {
     pub fn load(&self) -> Result<(usize, usize)> {
         self.set_phase(Phase::Loading, 0);
         self.lock_data_dir()?;
-        match startup::detect_startup_path(&self.data_dir)? {
-            StartupPath::FirstLaunch => startup::first_launch(&self.data_dir)?,
-            StartupPath::WarmRestart => startup::warm_restart(&self.data_dir)?,
+        let crashed = match startup::detect_startup_path(&self.data_dir)? {
+            StartupPath::FirstLaunch => {
+                startup::first_launch(&self.data_dir)?;
+                false
+            }
+            StartupPath::WarmRestart => {
+                startup::warm_restart(&self.data_dir)?;
+                false
+            }
             StartupPath::CrashRecovery => {
                 log::warn!("previous session did not shut down cleanly; recovering");
-                startup::crash_recovery(&self.data_dir)?
+                startup::crash_recovery(&self.data_dir)?;
+                true
             }
-        }
+        };
 
-        let loaded = self.load_snapshot()?;
+        // After a crash the index files are checked against their checksums
+        let loaded = self.load_base(crashed)?;
+        self.remove_superseded_files();
 
         // Changes logged after the snapshot was taken: re-examine each path.
         let snapshot_seq = self.last_seq.load(Ordering::Relaxed);
@@ -681,6 +722,18 @@ impl Engine {
         }
         *guard = Some(file);
         Ok(())
+    }
+
+    /// Delete index files the manifest does not point at: older generations,
+    /// a generation whose merge never completed, and pre-base segment files.
+    fn remove_superseded_files(&self) {
+        let current = Manifest::load(&self.data_dir).base.map(|files| files.generation);
+        base::remove_other_generations(&self.data_dir, current);
+        for entry in fs::read_dir(&self.data_dir).into_iter().flatten().flatten() {
+            if entry.path().extension().is_some_and(|ext| ext == "seg") {
+                let _ = fs::remove_file(entry.path());
+            }
+        }
     }
 
     fn wal_path(&self) -> PathBuf {
@@ -777,8 +830,15 @@ impl Engine {
                 }
             }
             state.executor.trigram_index.remove(*doc_id);
+            // Its postings in the on-disk base no longer count
+            let ordinal = state.executor.base.as_ref().and_then(|base| base.ordinal_of(*doc_id));
+            if let Some(ordinal) = ordinal {
+                state.executor.base_dead.set(ordinal);
+            }
         }
+        // Only the delta is scanned here; the base is never rewritten in place
         state.executor.delta_index.purge(&removed);
+        self.mutations.fetch_add(1, Ordering::Relaxed);
 
         for prepared in batch {
             if state.docs().len() >= MAX_DOCS {
@@ -844,6 +904,7 @@ impl Engine {
                 }
                 if batch.len() >= COMMIT_BATCH {
                     self.commit(std::mem::take(&mut batch), HashSet::new());
+                    self.merge_if_delta_is_large();
                     let mut identity = self.identity.lock().unwrap_or_else(PoisonError::into_inner);
                     let _ = identity.commit_batch();
                     let _ = identity.begin_batch();
@@ -878,16 +939,8 @@ impl Engine {
         }
     }
 
-    /// Extract and index the content of one document. Returns false once the
-    /// memory budget is exhausted.
+    /// Extract and index the content of one document.
     fn index_one_content(&self, tokenizer: &Tokenizer, doc_id: DocId, path: &str) -> bool {
-        if self.state.read().unwrap_or_else(PoisonError::into_inner).executor.delta_index.is_over_budget() {
-            if !self.budget_exhausted.swap(true, Ordering::Relaxed) {
-                log::warn!("index memory budget reached; remaining file contents are not indexed");
-            }
-            return false;
-        }
-
         let extracted = self.extractor.lock().unwrap_or_else(PoisonError::into_inner).extract(path);
         let (postings, token_count, content_hash) = match extracted {
             Ok(result) if !result.text.is_empty() => {
@@ -914,9 +967,27 @@ impl Engine {
             } else {
                 state.executor.delta_index.append_postings(doc_id, postings, token_count, content_hash);
             }
+            self.mutations.fetch_add(1, Ordering::Relaxed);
             self.dirty.fetch_add(1, Ordering::Relaxed);
         }
         true
+    }
+
+    /// Fold the delta into the on-disk base if it has grown past its limit.
+    /// This is what keeps memory flat however much there is to index.
+    fn merge_if_delta_is_large(&self) {
+        let (posting_bytes, limit) = {
+            let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
+            let delta = &state.executor.delta_index;
+            (delta.posting_bytes(), DELTA_MERGE_BYTES.min(delta.memory_budget()))
+        };
+        // Not ours to write: a read-only engine keeps whatever it has in memory
+        let owner = self.dir_lock.lock().unwrap_or_else(PoisonError::into_inner).is_some();
+        if posting_bytes >= limit && owner {
+            if let Err(e) = self.snapshot() {
+                log::error!("merge failed: {e:#}");
+            }
+        }
     }
 
     /// Extract content for every document still waiting for it.
@@ -937,7 +1008,6 @@ impl Engine {
         if queue.is_empty() {
             return;
         }
-        self.budget_exhausted.store(false, Ordering::Relaxed);
         self.set_phase(Phase::Extracting, queue.len() as u64);
 
         let tokenizer = Tokenizer::new();
@@ -949,6 +1019,9 @@ impl Engine {
                 break;
             }
             self.work_done.fetch_add(1, Ordering::Relaxed);
+            if index % 16 == 15 {
+                self.merge_if_delta_is_large();
+            }
             if index % 64 == 63 {
                 self.state.write().unwrap_or_else(PoisonError::into_inner).executor.refresh_stats();
                 pump();
@@ -1043,6 +1116,10 @@ impl Engine {
             }
             self.state.write().unwrap_or_else(PoisonError::into_inner).executor.refresh_stats();
         }
+        // A burst (a branch switch, an unpacked archive) can fill the delta
+        if log_to_wal {
+            self.merge_if_delta_is_large();
+        }
     }
 
     fn log_change(&self, path: &str, metadata: Option<&fs::Metadata>) {
@@ -1075,34 +1152,56 @@ impl Engine {
 
     // ─── Snapshots ────────────────────────────────────────────────────────────
 
-    /// Write the whole index to a new segment, point the manifest at it, and
-    /// truncate the WAL it supersedes. Tombstoned data is not carried over,
-    /// so this doubles as compaction.
+    /// Merge: write the next on-disk base from the current base (minus its
+    /// dead documents) and the delta, switch to it, empty the delta, and
+    /// truncate the WAL it supersedes.
+    ///
+    /// Queries keep running while the files are written; they are excluded
+    /// only for the switch itself.
     pub fn snapshot(&self) -> Result<()> {
         if self.dir_lock.lock().unwrap_or_else(PoisonError::into_inner).is_none() {
             anyhow::bail!("this engine does not own {} and will not write to it", self.data_dir.display());
         }
+        let _one_at_a_time = self.merge_lock.lock().unwrap_or_else(PoisonError::into_inner);
+
         // Everything logged so far is applied: logging and applying happen
-        // together on the worker thread, which is also the thread snapshotting.
+        // together, and the WAL is flushed before the index is read.
         if let Some(wal) = self.wal.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
             wal.flush()?;
         }
         let snapshot_seq = self.last_seq.load(Ordering::Relaxed);
         let generation = self.generation.load(Ordering::Relaxed) + 1;
-        let name = format!("segment_{generation:06}.seg");
 
-        let (builder, doc_count, signals) = {
-            let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
-            (
-                SegmentBuilder::from_delta(&state.executor.delta_index),
-                state.executor.delta_index.live_doc_count() as u64,
-                serde_json::to_vec(&state.signals)?,
-            )
+        let write = |state: &State| -> Result<BaseFiles> {
+            let executor = &state.executor;
+            let old = executor.base.as_ref().map(|base| (base, &executor.base_dead));
+            Ok(base::merge(&self.data_dir, generation, old, &executor.delta_index.index, &executor.delta_index.documents)?)
         };
-        builder.finalize(self.data_dir.join(&name))?;
 
+        // Write under a read lock, so searches are not held up...
+        let (mut files, seen) = {
+            let state = self.state.read().unwrap_or_else(PoisonError::into_inner);
+            (write(&state)?, self.mutations.load(Ordering::Relaxed))
+        };
+
+        // ...then switch under the write lock.
+        let (doc_count, signals) = {
+            let mut state = self.state.write().unwrap_or_else(PoisonError::into_inner);
+            if self.mutations.load(Ordering::Relaxed) != seen {
+                // The index changed while the files were being written. Write
+                // them again with writers excluded; this is rare and brief.
+                files = write(&state)?;
+            }
+            let (new_base, _) = BaseIndex::open(&self.data_dir, &files, false)?;
+            state.executor.base_dead = Bitset::new(new_base.doc_count());
+            state.executor.base = Some(new_base);
+            state.executor.delta_index.clear_postings();
+            (state.executor.delta_index.live_doc_count() as u64, serde_json::to_vec(&state.signals)?)
+        };
+
+        // The files only count once the manifest names them
         let manifest = Manifest {
-            segment: Some(name.clone()),
+            base: Some(files),
             generation,
             snapshot_seq,
             doc_count,
@@ -1111,14 +1210,8 @@ impl Engine {
         write_atomically(&self.data_dir.join("manifest.json"), &serde_json::to_vec_pretty(&manifest)?)?;
         self.generation.store(generation, Ordering::Relaxed);
 
-        // The manifest now points at the new segment; older ones and the WAL
-        // entries it covers are no longer needed.
-        for entry in fs::read_dir(&self.data_dir)?.flatten() {
-            let path = entry.path();
-            if path.extension().is_some_and(|ext| ext == "seg") && entry.file_name().to_string_lossy() != name {
-                let _ = fs::remove_file(path);
-            }
-        }
+        // Older generations and the WAL entries this one covers are no longer needed
+        self.remove_superseded_files();
         {
             let mut wal = self.wal.lock().unwrap_or_else(PoisonError::into_inner);
             if wal.is_some() {
@@ -1130,7 +1223,7 @@ impl Engine {
         write_atomically(&self.data_dir.join("signals.json"), &signals)?;
 
         self.dirty.store(0, Ordering::Relaxed);
-        log::info!("snapshot {name}: {doc_count} documents");
+        log::info!("merged into base generation {generation}: {doc_count} documents");
         Ok(())
     }
 
@@ -1567,7 +1660,7 @@ impl Engine {
             .map(|dir| {
                 dir.flatten()
                     .map(|entry| entry.path())
-                    .filter(|path| path.extension().is_some_and(|ext| ext == "seg"))
+                    .filter(|path| path.extension().is_some_and(|ext| ext == "terms"))
                     .collect()
             })
             .unwrap_or_default();
@@ -1593,8 +1686,10 @@ impl Engine {
             doc_count: delta.live_doc_count(),
             content_indexed_fraction: if eligible == 0 { 1.0 } else { processed as f32 / eligible as f32 },
             segment_count: segments.len(),
-            index_bytes: delta.approx_bytes() as u64,
-            over_budget: delta.is_over_budget(),
+            index_bytes: state.executor.base.as_ref().map_or(0, |base| base.files().bytes),
+            delta_bytes: delta.posting_bytes() as u64,
+            dead_in_base: state.executor.base_dead.count(),
+            over_budget: false,
             wal_lag_events,
             last_snapshot_age_secs,
             phantom_rate: integrity.as_ref().map_or(0.0, |report| report.phantom_rate),

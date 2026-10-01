@@ -25,7 +25,7 @@ Top-level folders you will use most often:
 `src/engine.rs` is the live engine. It owns the index and ties the other modules together:
 
 - **Indexing** (`fs/`, `extract/`): walks the configured folders, indexes names, then extracts and indexes file contents: plain text, source code, PDFs (PDFKit), and Word, RTF and OpenDocument files (AppKit importers). PDFs and documents are parsed in the `localsearch-extractor` helper process (`extractor-xpc/`), which sandboxes itself (no network, no file writes) before reading anything, so a parser crash, hang or exploit costs one file, not the app.
-- **Persistence** (`index/segment.rs`, `wal/`, `fs/identity.rs`): the index is snapshotted to a checksummed segment file; filesystem changes since the snapshot are logged to a write-ahead log and replayed on the next start; SQLite maps files to stable document IDs.
+- **Storage** (`index/base.rs`, `index/delta.rs`, `wal/`, `fs/identity.rs`): the index is a compressed, memory-mapped set of files (a term dictionary plus delta-coded posting lists, with files numbered in folder order), so only the parts a query touches are in memory. Files changed since it was written are marked dead there and re-indexed into a small in-memory delta; a merge writes the next generation and empties the delta. Changes since the last merge are also logged to a write-ahead log and replayed on the next start; SQLite maps files to stable document IDs.
 - **Live updates** (`fs/events.rs`): FSEvents drive incremental updates while the app runs. A reconcile walk on start picks up anything that changed while it was not running.
 - **Queries** (`query/`): answered from memory — BM25 over names and content (calibrated from the real corpus), typo and phonetic tolerance, filename matching, and a boost for files opened before. Spotlight (`mdfind`) is consulted only while the first index is still being built.
 - **C ABI** (`ffi.rs`): `localsearch_query`, `localsearch_free_results`, `localsearch_record_click`, `localsearch_configure`, `localsearch_index_status`, `localsearch_shutdown`.
@@ -100,7 +100,7 @@ Change this in **Settings → Indexing** (folders, skipped names, depth, content
 
 Contents are read from text and source files, PDFs, and Word/RTF/OpenDocument files (the first 64 KB of text in each). Spreadsheets, presentations, images and mail are indexed by name only.
 
-File contents stop being indexed once the in-memory index reaches its budget (256 MB by default, `memory_budget_mb` in `config.json`); names are always indexed. Settings shows when the limit was reached.
+There is no ceiling on how much content is indexed: the index lives on disk and only recent changes are held in memory.
 
 Environment overrides, mainly for development:
 
@@ -152,36 +152,36 @@ cargo run --release -- --debug-panel    # index health, from the real index
 
 ## Benchmarks
 
-LocalSearch against Spotlight on the same three folders (59,642 items), Apple M3 with 8 GB RAM. Both are called in-process and capped at 100 results; times are medians in milliseconds.
+LocalSearch against Spotlight on the same three folders (59,658 items), Apple M3 with 8 GB RAM. Both are called in-process and capped at 100 results; times are medians in milliseconds.
 
 | Query | LocalSearch | Spotlight, names only | Spotlight, names + contents |
 |---|--:|--:|--:|
-| `report` | 11.4 | 159 | 157 |
-| `test` | 7.6 | 13.9 | 16.6 |
-| `config` | 9.5 | 14.5 | 163 |
-| `screenshot` | 2.2 | 149 | 155 |
-| `re` (two letters) | 9.8 | **2.9** | **3.3** |
-| `README.md` | 3.5 | 15.5 | 33.2 |
-| `index.html` | 2.8 | 151 | 1555 |
-| `meeting notes` | 12.9 | 188 | 199 |
-| `function` (content word) | 6.0 | 14.0 | 180 |
-| `zebrafish` (rare word) | 1.9 | 172 | 178 |
-| `reprot` (typo) | 5.0 | 175 | 178 |
-| **Middle of all 19 queries** | **6.0** | **151** | **177** |
+| `report` | 12.4 | 157 | 157 |
+| `test` | 8.1 | 13.9 | 16.4 |
+| `config` | 9.9 | 14.0 | 163 |
+| `screenshot` | 2.3 | 150 | 155 |
+| `re` (two letters) | 10.7 | **3.0** | **3.4** |
+| `README.md` | 3.0 | 15.5 | 32.4 |
+| `index.html` | 3.4 | 152 | 1543 |
+| `meeting notes` | 13.4 | 175 | 182 |
+| `function` (content word) | 5.2 | 13.2 | 166 |
+| `zebrafish` (rare word) | 1.5 | 147 | 149 |
+| `reprot` (typo) | 4.6 | 150 | 153 |
+| **Middle of all 19 queries** | **6.9** | **150** | **159** |
 
 LocalSearch is faster on 18 of the 19 queries; Spotlight wins on the two-letter prefix.
 
 | | LocalSearch |
 |---|--:|
-| Slowest query (median) | 12.9 ms |
-| Worst query while the index is being saved | 21 ms |
-| New file becomes findable | 0.35 s (Spotlight: about 1.9 s in two earlier runs) |
-| First index, names searchable | 4.3 s |
-| First index, names and contents | 59.5 s |
+| Slowest query (median) | 13.4 ms |
+| Worst query while recent changes are merged into the index | 20 ms |
+| New file becomes findable | 0.39 s (Spotlight: about 1.9 s in two earlier runs) |
+| First index, names searchable | 6.6 s |
+| First index, names and contents | 67.2 s |
 | File contents indexed (text, code, PDF, Word/RTF) | 100% |
-| Memory with the index loaded | 374 MB |
-| Index on disk | 49 MB |
-| Loading the index at launch | 1.4 s |
+| Memory with the index loaded | 112 MB |
+| Index on disk | 22 MB |
+| Loading the index at launch | 1.2 s |
 
 What these numbers do not say:
 
@@ -189,7 +189,7 @@ What these numbers do not say:
 - Spotlight covers the whole disk and many more file types, needs no index build by the user, and costs the app no memory. LocalSearch here covers three folders.
 - The two interpret queries differently: for several words LocalSearch matches any of them, the Spotlight queries require all; LocalSearch also returns approximate matches for typos, where Spotlight matches literally.
 - Ranking quality is not measured.
-- In the first of three runs, one LocalSearch query took about 10 s once. It has not recurred and the cause was not identified.
+- In the first of four runs, one LocalSearch query took about 10 s once. It has not recurred and the cause was not identified.
 
 Full tables, method and per-run notes are in [`docs/benchmarks/spotlight.md`](docs/benchmarks/spotlight.md). Reproduce with:
 
@@ -217,7 +217,6 @@ Set `RUST_LOG=info` (or `debug`) in the app's environment to see engine logs, in
 
 - Check its folder is listed in Settings → Indexing and its name is not under "Skipped names".
 - While Settings shows "Indexing", newer files may not be in yet.
-- If Settings shows "content limit reached", the file's name is indexed but its contents may not be.
 
 ### Global hotkey does not work
 
