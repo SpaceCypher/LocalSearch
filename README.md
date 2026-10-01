@@ -152,7 +152,46 @@ cargo run --release -- --debug-panel    # index health, from the real index
 
 ## Benchmarks
 
-`docs/benchmarks/spotlight.md` compares query latency, freshness and resource cost against Spotlight on one machine. Reproduce it with:
+LocalSearch against Spotlight on the same three folders (59,642 items), Apple M3 with 8 GB RAM. Both are called in-process and capped at 100 results; times are medians in milliseconds.
+
+| Query | LocalSearch | Spotlight, names only | Spotlight, names + contents |
+|---|--:|--:|--:|
+| `report` | 11.4 | 159 | 157 |
+| `test` | 7.6 | 13.9 | 16.6 |
+| `config` | 9.5 | 14.5 | 163 |
+| `screenshot` | 2.2 | 149 | 155 |
+| `re` (two letters) | 9.8 | **2.9** | **3.3** |
+| `README.md` | 3.5 | 15.5 | 33.2 |
+| `index.html` | 2.8 | 151 | 1555 |
+| `meeting notes` | 12.9 | 188 | 199 |
+| `function` (content word) | 6.0 | 14.0 | 180 |
+| `zebrafish` (rare word) | 1.9 | 172 | 178 |
+| `reprot` (typo) | 5.0 | 175 | 178 |
+| **Middle of all 19 queries** | **6.0** | **151** | **177** |
+
+LocalSearch is faster on 18 of the 19 queries; Spotlight wins on the two-letter prefix.
+
+| | LocalSearch |
+|---|--:|
+| Slowest query (median) | 12.9 ms |
+| Worst query while the index is being saved | 21 ms |
+| New file becomes findable | 0.35 s (Spotlight: about 1.9 s in two earlier runs) |
+| First index, names searchable | 4.3 s |
+| First index, names and contents | 59.5 s |
+| File contents indexed (text, code, PDF, Word/RTF) | 100% |
+| Memory with the index loaded | 374 MB |
+| Index on disk | 49 MB |
+| Loading the index at launch | 1.4 s |
+
+What these numbers do not say:
+
+- One machine and one set of files.
+- Spotlight covers the whole disk and many more file types, needs no index build by the user, and costs the app no memory. LocalSearch here covers three folders.
+- The two interpret queries differently: for several words LocalSearch matches any of them, the Spotlight queries require all; LocalSearch also returns approximate matches for typos, where Spotlight matches literally.
+- Ranking quality is not measured.
+- In the first of three runs, one LocalSearch query took about 10 s once. It has not recurred and the cause was not identified.
+
+Full tables, method and per-run notes are in [`docs/benchmarks/spotlight.md`](docs/benchmarks/spotlight.md). Reproduce with:
 
 ```bash
 cargo run --release --example bench_vs_spotlight > docs/benchmarks/spotlight.md
